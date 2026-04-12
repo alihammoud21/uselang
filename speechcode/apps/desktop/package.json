@@ -1,0 +1,59 @@
+{
+  "name": "@speechcode/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SpeechCode desktop app",
+  "author": "OpenAI Codex",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "package": "corepack pnpm build && electron-builder --mac dmg --win nsis",
+    "package:mac": "corepack pnpm build && electron-builder --mac dmg",
+    "package:win": "corepack pnpm build && electron-builder --win nsis",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "@speechcode/licensing": "workspace:*",
+    "@speechcode/providers": "workspace:*",
+    "@speechcode/session": "workspace:*",
+    "@speechcode/shared": "workspace:*",
+    "@speechcode/types": "workspace:*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.8"
+  },
+  "build": {
+    "appId": "com.speechcode.desktop",
+    "productName": "SpeechCode",
+    "files": [
+      "out/**/*",
+      "dist/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

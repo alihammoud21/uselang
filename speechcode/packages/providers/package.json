@@ -1,0 +1,27 @@
+{
+  "name": "@speechcode/providers",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean --external electron"
+  },
+  "dependencies": {
+    "@speechcode/types": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.2.4"
+  },
+  "peerDependencies": {
+    "electron": "^31.0.0"
+  }
+}
