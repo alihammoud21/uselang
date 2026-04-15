@@ -7,6 +7,7 @@ import {
   markSynced,
   savePracticeItem,
 } from '@/lib/offline-store'
+import { buildApiUrl } from '@/lib/runtime'
 
 const PRACTICE_EVENT = 'lang:practice-updated'
 
@@ -20,7 +21,7 @@ function emitPracticeUpdate() {
 async function syncToCloud(record, idToken) {
   if (!idToken) return false
   try {
-    const response = await fetch('/.netlify/functions/save-practice', {
+    const response = await fetch(buildApiUrl('/api/save-practice'), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${idToken}`,

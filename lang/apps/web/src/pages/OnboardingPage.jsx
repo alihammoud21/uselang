@@ -8,26 +8,59 @@ import {
   TUTOR_STYLE_OPTIONS,
 } from '@shared/languages'
 import { APP_ROUTES } from '@/lib/routes'
+import { AISphere } from '@/components/AISphere'
 
-const STEP_TRANSITION = {
-  initial: { opacity: 0, x: 20 },
-  animate: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: -20 },
-  transition: { duration: 0.25 },
+const SAND = '#c9a97a'
+const SAND_BG = '#f5ede0'
+
+/* flags + native names for the language picker */
+const LANG_META = {
+  en: { native: 'English', accent: '#88a9d8' },
+  es: { native: 'Español', accent: '#d79a73' },
+  fr: { native: 'Français', accent: '#6d8dcf' },
+  de: { native: 'Deutsch', accent: '#8b8b8b' },
+  it: { native: 'Italiano', accent: '#74aa82' },
+  ja: { native: '日本語', accent: '#cf7c7c' },
+  nl: { native: 'Nederlands', accent: '#be9c69' },
+  zh: { native: '普通话', accent: '#d38f66' },
+  hi: { native: 'हिन्दी', accent: '#b87f5d' },
 }
 
-const STEP_META = {
-  languageLearning: { eyebrow: 'Target language', accent: 'text-accent' },
-  nativeLanguage: { eyebrow: 'Guide language', accent: 'text-violet' },
-  goal: { eyebrow: 'Motivation', accent: 'text-mint' },
-  confidenceLevel: { eyebrow: 'Current level', accent: 'text-amber' },
-  tutorStyle: { eyebrow: 'Coach style', accent: 'text-accent' },
-  correctionIntensity: { eyebrow: 'Correction feel', accent: 'text-danger' },
+const GOAL_META = {
+  travel:          { icon: 'travel', color: '#c97a5c' },
+  work:            { icon: 'work', color: '#c9a030' },
+  family:          { icon: 'family', color: '#8a9c6e' },
+  school:          { icon: 'school', color: '#a07c52' },
+  general_interest:{ icon: 'world', color: SAND },
+}
+
+const CONFIDENCE_META = {
+  beginner:      { icon: 'seed', sub: 'Starting from scratch' },
+  basics:        { icon: 'sprout', sub: 'Know a little already' },
+  conversational:{ icon: 'tree', sub: 'Getting through exchanges' },
+}
+
+const STYLE_META = {
+  encouraging: { icon: 'support', sub: 'Warm & reassuring' },
+  balanced:    { icon: 'balance', sub: 'Clear with steady pace' },
+  strict:      { icon: 'target', sub: 'High standards, fast pace' },
+}
+
+const CORRECTION_META = {
+  light:    { icon: 'wave', sub: 'Major mistakes only' },
+  balanced: { icon: 'bell', sub: 'Important words corrected' },
+  strict:   { icon: 'focus', sub: 'Every detail caught' },
+}
+
+const STEP_TRANSITION = {
+  initial: { opacity: 0, x: 24 },
+  animate: { opacity: 1, x: 0 },
+  exit: { opacity: 0, x: -20 },
+  transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
 }
 
 export function OnboardingPage({ auth, route }) {
   const [stepIndex, setStepIndex] = useState(0)
-  const [dismissedInstall, setDismissedInstall] = useState(false)
   const [form, setForm] = useState(() => ({
     languageLearning: auth.profile?.languageLearning || '',
     nativeLanguage: auth.profile?.nativeLanguage || '',
@@ -37,55 +70,21 @@ export function OnboardingPage({ auth, route }) {
     correctionIntensity: auth.profile?.correctionIntensity || 'balanced',
   }))
 
-  const steps = useMemo(
-    () => [
-      {
-        id: 'welcome',
-        type: 'welcome',
-        title: 'Welcome to UseLang',
-        detail: 'Set up your tutor in under a minute. Then you can start speaking right away.',
-      },
-      {
-        id: 'languageLearning',
-        title: 'What language do you want to learn?',
-        options: SUPPORTED_LANGUAGES.map((l) => ({ id: l.code, title: l.label })),
-      },
-      {
-        id: 'nativeLanguage',
-        title: 'What language do you speak most?',
-        options: SUPPORTED_LANGUAGES.map((l) => ({ id: l.code, title: l.label })),
-      },
-      {
-        id: 'goal',
-        title: 'Why are you learning?',
-        options: GOAL_OPTIONS.map((g) => ({ id: g.id, title: g.label, detail: g.detail })),
-      },
-      {
-        id: 'confidenceLevel',
-        title: 'How confident are you right now?',
-        options: CONFIDENCE_LEVELS.map((o) => ({ id: o.id, title: o.label, detail: o.detail })),
-      },
-      {
-        id: 'tutorStyle',
-        title: 'How should the coach behave?',
-        options: TUTOR_STYLE_OPTIONS.map((o) => ({ id: o.id, title: o.label, detail: o.detail })),
-      },
-      {
-        id: 'correctionIntensity',
-        title: 'How strict should corrections be?',
-        options: CORRECTION_INTENSITY.map((o) => ({ id: o.id, title: o.label, detail: o.detail })),
-      },
-    ],
-    [],
-  )
+  const steps = useMemo(() => [
+    { id: 'welcome', type: 'welcome' },
+    { id: 'languageLearning', type: 'language', eyebrow: 'Step 1 of 6', title: 'Which language are you learning?' },
+    { id: 'nativeLanguage',   type: 'language', eyebrow: 'Step 2 of 6', title: 'What language do you already speak?' },
+    { id: 'goal',             type: 'goal',     eyebrow: 'Step 3 of 6', title: "Why are you learning?" },
+    { id: 'confidenceLevel',  type: 'choice',   eyebrow: 'Step 4 of 6', title: 'How would you describe your level?' },
+    { id: 'tutorStyle',       type: 'choice',   eyebrow: 'Step 5 of 6', title: 'How should your coach sound?' },
+    { id: 'correctionIntensity', type: 'choice', eyebrow: 'Step 6 of 6', title: 'How strictly should mistakes be caught?' },
+  ], [])
 
   const isInstallStep = stepIndex === steps.length
   const currentStep = steps[stepIndex]
-  const isWelcomeStep = currentStep?.type === 'welcome'
-  const isLanguageStep =
-    currentStep?.id === 'languageLearning' || currentStep?.id === 'nativeLanguage'
-  const currentValue = currentStep && !isWelcomeStep ? form[currentStep.id] : null
-  const canContinue = isInstallStep || isWelcomeStep ? true : Boolean(currentValue)
+  const isWelcome = currentStep?.type === 'welcome'
+  const currentValue = currentStep && !isWelcome ? form[currentStep.id] : null
+  const canContinue = isInstallStep || isWelcome || Boolean(currentValue)
   const totalSteps = steps.length + 1
   const progress = ((stepIndex + 1) / totalSteps) * 100
 
@@ -102,231 +101,353 @@ export function OnboardingPage({ auth, route }) {
     setStepIndex((c) => Math.max(0, c - 1))
   }
 
+  function pick(value) {
+    setForm((c) => ({ ...c, [currentStep.id]: value }))
+  }
+
   return (
-    <div className="app-stage min-h-screen">
-      <div className="phone-shell flex flex-col">
-        {/* progress header */}
-        <div className="relative z-10 px-5 pt-[calc(env(safe-area-inset-top)+1rem)]">
+    <div
+      className="min-h-screen"
+      style={{ background: 'linear-gradient(180deg, #ffffff 0%, #faf6f1 100%)' }}
+    >
+      <div
+        className="phone-shell flex flex-col"
+        style={{ background: 'linear-gradient(180deg, #ffffff 0%, #faf6f1 100%)' }}
+      >
+        {/* Progress bar */}
+        <div className="relative z-10 px-5 pt-[calc(env(safe-area-inset-top)+1.2rem)]">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={handleBack}
               disabled={stepIndex === 0}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-ink/[0.04] text-ink/40 disabled:opacity-25"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black/[0.04] text-ink/40 disabled:opacity-0"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M15 18l-6-6 6-6" />
               </svg>
             </button>
-            <div className="h-[3px] flex-1 overflow-hidden rounded-full bg-ink/[0.06]">
+            <div className="h-[2.5px] flex-1 overflow-hidden rounded-full bg-black/[0.05]">
               <motion.div
-                className="h-full rounded-full bg-accent"
+                className="h-full rounded-full"
+                style={{ background: SAND }}
                 animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.35 }}
+                transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
               />
             </div>
-            <span className="text-[0.7rem] font-medium tabular-nums text-ink/25">{stepIndex + 1}/{totalSteps}</span>
+            <span className="text-[0.65rem] font-medium tabular-nums text-ink/22">{stepIndex + 1}/{totalSteps}</span>
           </div>
         </div>
 
-        {/* content */}
-        <div className="relative z-10 flex-1 overflow-y-auto px-5 pb-6 pt-8">
+        {/* Content */}
+        <div className="relative z-10 flex-1 overflow-y-auto px-5 pb-4 pt-6">
           <AnimatePresence mode="wait">
             {isInstallStep ? (
               <motion.section key="install" {...STEP_TRANSITION} className="space-y-5">
                 <div>
-                  <h1 className="text-[1.8rem] font-bold leading-tight tracking-[-0.03em] text-ink">
+                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: SAND }}>
+                    One last step
+                  </p>
+                  <h1 className="mt-3 text-[1.9rem] font-bold leading-tight tracking-[-0.04em] text-ink">
                     Add UseLang to your home screen.
                   </h1>
-                  <p className="mt-2 text-[0.88rem] leading-relaxed text-ink/45">
-                    Opens full screen. Feels like a real app.
+                  <p className="mt-2 text-[0.88rem] leading-relaxed text-ink/40">
+                    Opens full screen, feels native. No App Store needed.
                   </p>
                 </div>
-
-                <div className="rounded-2xl bg-white p-5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-                  <div className="space-y-3">
-                    {[
-                      'Open the browser share menu.',
-                      'Choose Add to Home Screen.',
-                      'Launch from your home screen.',
-                    ].map((item, index) => (
-                      <div key={item} className="flex gap-3 rounded-xl bg-ink/[0.025] px-3 py-2.5">
-                        <span className="text-[0.82rem] font-bold text-accent">{index + 1}</span>
-                        <p className="text-[0.82rem] text-ink/55">{item}</p>
-                      </div>
-                    ))}
-                  </div>
+                <div className="rounded-[1.6rem] bg-white p-5" style={{ boxShadow: '0 8px 32px -12px rgba(201,169,122,0.18)' }}>
+                  {[
+                    { n: 1, text: 'Open the browser share menu.' },
+                    { n: 2, text: 'Choose Add to Home Screen.' },
+                    { n: 3, text: 'Launch from your home screen.' },
+                  ].map(({ n, text }) => (
+                    <div key={n} className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0 border-b border-black/[0.04] last:border-0">
+                      <span
+                        className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[0.7rem] font-bold text-white"
+                        style={{ background: SAND }}
+                      >{n}</span>
+                      <p className="text-[0.82rem] text-ink/55 leading-snug">{text}</p>
+                    </div>
+                  ))}
                 </div>
-
-                {!dismissedInstall ? (
-                  <button type="button" onClick={() => setDismissedInstall(true)} className="text-[0.78rem] text-ink/30 underline underline-offset-4">
-                    Skip for now
-                  </button>
-                ) : null}
               </motion.section>
+
             ) : (
               <motion.section key={currentStep.id} {...STEP_TRANSITION}>
-                {isWelcomeStep ? (
-                  <div className="space-y-6">
-                    <div>
-                      <p className="text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-accent">
-                        Personalization
-                      </p>
-                      <h1 className="mt-3 text-[1.9rem] font-bold leading-tight tracking-[-0.03em] text-ink">
-                        {currentStep.title}
-                      </h1>
-                      <p className="mt-2 text-[0.9rem] leading-relaxed text-ink/45">
-                        {currentStep.detail}
-                      </p>
-                    </div>
-
-                    <div className="flex justify-center">
-                      <div
-                        className="relative flex h-32 w-32 items-center justify-center rounded-full"
-                        style={{
-                          background: 'radial-gradient(circle at 50% 30%, rgba(255,255,255,0.92) 0%, rgba(188,216,255,0.55) 48%, rgba(0,122,255,0.35) 100%)',
-                          boxShadow: '0 30px 64px -30px rgba(0,122,255,0.28)',
-                        }}
-                      >
-                        <div className="absolute inset-[12%] rounded-full border border-white/70" />
-                      </div>
-                    </div>
-
-                    <div
-                      className="relative overflow-hidden rounded-[1.6rem] bg-white p-5"
-                      style={{ boxShadow: '0 16px 38px -24px rgba(15, 20, 25, 0.15)' }}
-                    >
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top_right,rgba(0,122,255,0.14),transparent_42%),radial-gradient(circle_at_top_left,rgba(255,178,208,0.18),transparent_42%)]" />
-                      <div className="space-y-3">
-                        {[
-                          'Pick the language you speak and the language you want to learn.',
-                          'Choose your goal, confidence level, and tutor style.',
-                          'Set how strict the corrections should feel.',
-                        ].map((item) => (
-                          <div key={item} className="flex gap-3 rounded-xl bg-ink/[0.025] px-3 py-3">
-                            <span className="mt-0.5 h-2 w-2 rounded-full bg-accent" />
-                            <p className="text-[0.8rem] leading-snug text-ink/55">{item}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                {isWelcome ? (
+                  <WelcomeStep />
+                ) : currentStep.type === 'language' ? (
+                  <LanguageStep step={currentStep} value={currentValue} onPick={pick} />
+                ) : currentStep.type === 'goal' ? (
+                  <GoalStep step={currentStep} value={currentValue} onPick={pick} />
                 ) : (
-                  <>
-                    <div className="relative overflow-hidden rounded-[1.55rem] bg-white/92 p-4" style={{ boxShadow: '0 18px 38px -24px rgba(15, 20, 25, 0.16)' }}>
-                      <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top_left,rgba(255,178,208,0.18),transparent_42%),radial-gradient(circle_at_top_right,rgba(0,122,255,0.12),transparent_36%)]" />
-                      <p className={`relative text-[0.68rem] font-semibold uppercase tracking-[0.05em] ${STEP_META[currentStep.id]?.accent || 'text-accent/55'}`}>
-                        {STEP_META[currentStep.id]?.eyebrow || 'Personalization'}
-                      </p>
-                      <h1 className="relative mt-2 text-[1.7rem] font-bold leading-tight tracking-[-0.04em] text-ink">
-                        {currentStep.title}
-                      </h1>
-                      <p className="relative mt-2 text-[0.82rem] leading-snug text-ink/38">
-                        Pick the option that feels most natural right now. You can change it later in Settings.
-                      </p>
-                    </div>
-
-                    <div className={`mt-5 grid gap-2.5 ${isLanguageStep ? 'grid-cols-2' : ''}`}>
-                      {currentStep.options.map((option) => {
-                        const active = currentValue === option.id
-                        return (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => setForm((c) => ({ ...c, [currentStep.id]: option.id }))}
-                            className={`relative flex items-center justify-between overflow-hidden rounded-[1.25rem] px-4 py-4 text-left transition ${
-                              active ? 'bg-accent/[0.06] ring-1 ring-accent/24' : 'bg-white'
-                            }`}
-                            style={{ boxShadow: active ? '0 18px 38px -24px rgba(0,122,255,0.24)' : '0 14px 32px -24px rgba(15, 20, 25, 0.14)' }}
-                          >
-                            {active ? (
-                              <div className="pointer-events-none absolute inset-x-0 top-0 h-12 bg-[radial-gradient(circle_at_top_left,rgba(0,122,255,0.12),transparent_48%)]" />
-                            ) : null}
-                            <div className="flex min-w-0 flex-1 items-start gap-3">
-                              <span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${active ? 'bg-accent text-white' : 'bg-ink/[0.04] text-ink/34'}`}>
-                                <OptionGlyph stepId={currentStep.id} />
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <p className="text-[0.88rem] font-medium text-ink">{option.title}</p>
-                                {option.detail ? <p className="mt-0.5 text-[0.72rem] text-ink/40">{option.detail}</p> : null}
-                              </div>
-                            </div>
-                            {active ? (
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" className="text-accent shrink-0">
-                                <path d="M5 12l5 5L20 7" />
-                              </svg>
-                            ) : null}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </>
+                  <ChoiceStep step={currentStep} value={currentValue} onPick={pick} />
                 )}
               </motion.section>
             )}
           </AnimatePresence>
         </div>
 
-        {/* footer */}
-        <div className="relative z-10 border-t border-ink/[0.04] px-5 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3">
-          <div className="rounded-[1.45rem] bg-white/88 p-2.5" style={{ boxShadow: '0 10px 28px -20px rgba(15, 20, 25, 0.16)' }}>
-            <button
-              type="button"
-              onClick={handleContinue}
-              disabled={!canContinue || auth.busy}
-              className="btn-primary w-full"
-            >
-              {auth.busy ? 'Saving...' : isInstallStep ? 'Get started' : isWelcomeStep ? "Let's personalize it" : 'Continue'}
-            </button>
-          </div>
+        {/* Footer */}
+        <div className="relative z-10 px-5 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3">
+          <button
+            type="button"
+            onClick={handleContinue}
+            disabled={!canContinue || auth.busy}
+            className="btn-warm w-full"
+          >
+            {auth.busy
+              ? 'Saving...'
+              : isInstallStep
+              ? 'Get started'
+              : isWelcome
+              ? "Let's begin"
+              : 'Continue'}
+          </button>
         </div>
       </div>
     </div>
   )
 }
 
-function OptionGlyph({ stepId }) {
-  if (stepId === 'languageLearning' || stepId === 'nativeLanguage') {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 5h8" />
-        <path d="M4 9h6" />
-        <path d="M13 5h7" />
-        <path d="M15 19l3.5-9 3.5 9" />
-        <path d="M16.5 16h4" />
-      </svg>
-    )
-  }
-  if (stepId === 'goal') {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 20V10" />
-        <path d="M18 20V4" />
-        <path d="M6 20v-6" />
-      </svg>
-    )
-  }
-  if (stepId === 'confidenceLevel') {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 12a8 8 0 0116 0" />
-        <path d="M12 12l4-4" />
-      </svg>
-    )
-  }
-  if (stepId === 'tutorStyle') {
-    return (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="9" y="3" width="6" height="11" rx="3" />
-        <path d="M5 11a7 7 0 0014 0" />
-        <path d="M12 18v3" />
-      </svg>
-    )
-  }
+/* ─── Welcome step ─── */
+function WelcomeStep() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.5 15.1a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-.9 1.5v.2a2 2 0 11-4 0v-.2a1.6 1.6 0 00-.9-1.5 1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-.9H3a2 2 0 110-4h.2a1.6 1.6 0 001.5-.9 1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3 1.6 1.6 0 00.9-1.5V3a2 2 0 114 0v.2a1.6 1.6 0 00.9 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8 1.6 1.6 0 001.5.9h.2a2 2 0 110 4h-.2a1.6 1.6 0 00-1.5.9z" />
-    </svg>
+    <div className="flex flex-col gap-8">
+      <div className="flex justify-center pt-2">
+        <AISphere tone="warm" state="idle" activityLevel={0.3} size={140} disabled hideLabel />
+      </div>
+      <div>
+        <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: SAND }}>
+          Welcome
+        </p>
+        <h1 className="mt-3 text-[2rem] font-bold leading-[1.1] tracking-[-0.04em] text-ink">
+          Your personal<br />language tutor.
+        </h1>
+        <p className="mt-3 text-[0.9rem] leading-[1.7] text-ink/42">
+          Answer 6 quick questions. Then just speak — the AI coaches you in real time.
+        </p>
+      </div>
+      <div
+        className="rounded-[1.6rem] bg-white p-5"
+        style={{ boxShadow: '0 12px 36px -16px rgba(201,169,122,0.18)' }}
+      >
+        {[
+          { icon: 'target', text: 'Personalized to your language and goals' },
+          { icon: 'mic', text: 'Real-time pronunciation feedback' },
+          { icon: 'download', text: 'Works offline with a local AI model' },
+        ].map(({ icon, text }) => (
+          <div key={text} className="flex items-center gap-3.5 py-2.5 border-b border-black/[0.04] last:border-0">
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-black/[0.03] text-[#c9a97a]">
+              <OnboardingIcon name={icon} />
+            </span>
+            <p className="text-[0.82rem] font-medium text-ink/60 leading-snug">{text}</p>
+          </div>
+        ))}
+      </div>
+    </div>
   )
+}
+
+/* ─── Language step — big flag cards ─── */
+function LanguageStep({ step, value, onPick }) {
+  return (
+    <div>
+      <StepHeader eyebrow={step.eyebrow} title={step.title} />
+      <div className="mt-5 grid grid-cols-2 gap-2.5">
+        {SUPPORTED_LANGUAGES.map((lang) => {
+          const meta = LANG_META[lang.code] || { native: lang.label, accent: SAND }
+          const active = value === lang.code
+          return (
+            <motion.button
+              key={lang.code}
+              type="button"
+              onClick={() => onPick(lang.code)}
+              whileTap={{ scale: 0.97 }}
+              className="relative flex flex-col items-center rounded-[1.4rem] p-4 text-center transition-all"
+              style={{
+                background: active ? SAND_BG : '#ffffff',
+                outline: active ? `1.5px solid ${SAND}44` : '1px solid rgba(0,0,0,0.05)',
+                boxShadow: active
+                  ? `0 8px 28px -8px rgba(201,169,122,0.28)`
+                  : '0 2px 10px -4px rgba(15,20,25,0.07)',
+              }}
+            >
+              {active && (
+                <span
+                  className="absolute right-2.5 top-2.5 flex h-5 w-5 items-center justify-center rounded-full"
+                  style={{ background: SAND }}
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round">
+                    <path d="M5 12l5 5L20 7" />
+                  </svg>
+                </span>
+              )}
+              <span
+                className="flex h-11 w-11 items-center justify-center rounded-full text-[0.78rem] font-semibold"
+                style={{ background: active ? `${meta.accent}22` : 'rgba(0,0,0,0.03)', color: meta.accent }}
+              >
+                {lang.label.slice(0, 2).toUpperCase()}
+              </span>
+              <p className="mt-2 text-[0.85rem] font-semibold text-ink">{lang.label}</p>
+              <p className="mt-0.5 text-[0.68rem] text-ink/30">{meta.native}</p>
+            </motion.button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Goal step — large cards with emoji + color ─── */
+function GoalStep({ step, value, onPick }) {
+  return (
+    <div>
+      <StepHeader eyebrow={step.eyebrow} title={step.title} />
+      <div className="mt-5 space-y-2.5">
+        {GOAL_OPTIONS.map((goal) => {
+          const meta = GOAL_META[goal.id] || { icon: 'world', color: SAND }
+          const active = value === goal.id
+          return (
+            <motion.button
+              key={goal.id}
+              type="button"
+              onClick={() => onPick(goal.id)}
+              whileTap={{ scale: 0.98 }}
+              className="flex w-full items-center gap-4 rounded-[1.35rem] p-4 text-left transition-all"
+              style={{
+                background: active ? SAND_BG : '#ffffff',
+                outline: active ? `1.5px solid ${SAND}44` : '1px solid rgba(0,0,0,0.05)',
+                boxShadow: active ? `0 8px 24px -8px rgba(201,169,122,0.22)` : '0 2px 10px -4px rgba(15,20,25,0.06)',
+              }}
+            >
+              <span
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[0.9rem] text-xl"
+                style={{ background: active ? meta.color + '18' : 'rgba(0,0,0,0.03)' }}
+              >
+                <OnboardingIcon name={meta.icon} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[0.9rem] font-semibold text-ink">{goal.label}</p>
+                <p className="mt-0.5 text-[0.72rem] text-ink/38 leading-snug">{goal.detail}</p>
+              </div>
+              {active && (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SAND} strokeWidth="2.5" strokeLinecap="round" className="shrink-0">
+                  <path d="M5 12l5 5L20 7" />
+                </svg>
+              )}
+            </motion.button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Choice step — confidence / tutor style / correction ─── */
+function ChoiceStep({ step, value, onPick }) {
+  const metaMap = step.id === 'confidenceLevel' ? CONFIDENCE_META
+    : step.id === 'tutorStyle' ? STYLE_META
+    : CORRECTION_META
+
+  const options = step.id === 'confidenceLevel' ? CONFIDENCE_LEVELS
+    : step.id === 'tutorStyle' ? TUTOR_STYLE_OPTIONS
+    : CORRECTION_INTENSITY
+
+  return (
+    <div>
+      <StepHeader eyebrow={step.eyebrow} title={step.title} />
+      <div className="mt-5 space-y-2.5">
+        {options.map((option) => {
+          const meta = metaMap[option.id] || { icon: 'balance' }
+          const active = value === option.id
+          return (
+            <motion.button
+              key={option.id}
+              type="button"
+              onClick={() => onPick(option.id)}
+              whileTap={{ scale: 0.98 }}
+              className="flex w-full items-center gap-4 rounded-[1.35rem] p-4 text-left transition-all"
+              style={{
+                background: active ? SAND_BG : '#ffffff',
+                outline: active ? `1.5px solid ${SAND}44` : '1px solid rgba(0,0,0,0.05)',
+                boxShadow: active ? `0 8px 24px -8px rgba(201,169,122,0.22)` : '0 2px 10px -4px rgba(15,20,25,0.06)',
+              }}
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[0.9rem] bg-black/[0.03] text-[#c9a97a]">
+                <OnboardingIcon name={meta.icon} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-[0.9rem] font-semibold text-ink">{option.label}</p>
+                <p className="mt-0.5 text-[0.72rem] text-ink/38 leading-snug">{meta.sub || option.detail}</p>
+              </div>
+              {active && (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={SAND} strokeWidth="2.5" strokeLinecap="round" className="shrink-0">
+                  <path d="M5 12l5 5L20 7" />
+                </svg>
+              )}
+            </motion.button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/* ─── Step header ─── */
+function StepHeader({ eyebrow, title }) {
+  return (
+    <div>
+      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.08em]" style={{ color: SAND }}>
+        {eyebrow}
+      </p>
+      <h1 className="mt-2.5 text-[1.75rem] font-bold leading-[1.1] tracking-[-0.04em] text-ink">
+        {title}
+      </h1>
+      <p className="mt-2 text-[0.82rem] text-ink/38">
+        You can change this later in Settings.
+      </p>
+    </div>
+  )
+}
+
+function OnboardingIcon({ name }) {
+  const common = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round', strokeLinejoin: 'round' }
+
+  switch (name) {
+    case 'travel':
+      return <svg {...common}><path d="M3 11l18-5-5 18-3-8-10-5z" /></svg>
+    case 'work':
+      return <svg {...common}><rect x="3" y="7" width="18" height="12" rx="2" /><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>
+    case 'family':
+      return <svg {...common}><path d="M3 10.5L12 3l9 7.5" /><path d="M5 9.5V20h14V9.5" /></svg>
+    case 'school':
+      return <svg {...common}><path d="M4 6.5L12 3l8 3.5L12 10 4 6.5z" /><path d="M6.5 8.2V14c0 1.4 2.4 3 5.5 3s5.5-1.6 5.5-3V8.2" /></svg>
+    case 'world':
+      return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 010 18" /><path d="M12 3a14 14 0 000 18" /></svg>
+    case 'seed':
+      return <svg {...common}><path d="M12 20v-7" /><path d="M12 13c-3.3 0-6-2.7-6-6 3.3 0 6 2.7 6 6z" /><path d="M12 13c0-3.3 2.7-6 6-6 0 3.3-2.7 6-6 6z" /></svg>
+    case 'sprout':
+      return <svg {...common}><path d="M12 21v-8" /><path d="M9 13c-2.2 0-4-1.8-4-4 2.2 0 4 1.8 4 4z" /><path d="M15 13c0-2.2 1.8-4 4-4 0 2.2-1.8 4-4 4z" /></svg>
+    case 'tree':
+      return <svg {...common}><path d="M12 21v-4" /><path d="M7 17h10" /><path d="M8 17a4 4 0 118 0" /><path d="M9 11a3 3 0 116 0" /></svg>
+    case 'support':
+      return <svg {...common}><path d="M8 13l4 4 4-4" /><path d="M8 11a4 4 0 118-2" /></svg>
+    case 'balance':
+      return <svg {...common}><path d="M12 4v16" /><path d="M6 8h12" /><path d="M7 8l-3 5h6l-3-5z" /><path d="M17 8l-3 5h6l-3-5z" /></svg>
+    case 'target':
+      return <svg {...common}><circle cx="12" cy="12" r="7" /><circle cx="12" cy="12" r="3" /></svg>
+    case 'wave':
+      return <svg {...common}><path d="M3 14c2 0 2-4 4-4s2 4 4 4 2-4 4-4 2 4 4 4 2-4 2-4" /></svg>
+    case 'bell':
+      return <svg {...common}><path d="M6 9a6 6 0 1112 0c0 7 3 8 3 8H3s3-1 3-8" /><path d="M10 20a2 2 0 004 0" /></svg>
+    case 'focus':
+      return <svg {...common}><path d="M4 12h4" /><path d="M16 12h4" /><path d="M12 4v4" /><path d="M12 16v4" /><circle cx="12" cy="12" r="3" /></svg>
+    case 'mic':
+      return <svg {...common}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0014 0" /><path d="M12 18v3" /></svg>
+    case 'download':
+      return <svg {...common}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+    default:
+      return <svg {...common}><circle cx="12" cy="12" r="8" /></svg>
+  }
 }

@@ -1,18 +1,20 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SUPPORTED_LANGUAGES } from '@shared/languages'
 import { getPracticePhraseEntries } from '@shared/lessons'
 import { buildWordArticulationGuide } from '@shared/tutor-engine'
-import { AISphere } from '@/components/AISphere'
 import { AppShell } from '@/components/AppShell'
 import { PronunciationDiagram } from '@/components/PronunciationDiagram'
 import { VoiceWave } from '@/components/VoiceWave'
 import { useActiveSession } from '@/hooks/use-active-session'
 import { useAudioRecorder } from '@/hooks/use-audio-recorder'
+import { useOfflineAI } from '@/hooks/use-offline-ai'
 import { useOfflinePractice } from '@/hooks/use-offline-practice'
 import { blobToBase64, buildAudioSource } from '@/lib/audio'
 import { createObjectUrl, revokeObjectUrl } from '@/lib/offline-store'
 import { APP_ROUTES } from '@/lib/routes'
+import { buildApiUrl } from '@/lib/runtime'
+import { isOfflineTtsAvailable, speakOffline } from '@/lib/speech-synthesis'
 
 const STARTER_PHRASES = {
   en: [
@@ -81,6 +83,23 @@ const STARTER_PHRASES = {
       sentence: '请问，火车站在哪里？',
       phonetic: 'qǐngwèn, huǒchē zhàn zài nǎlǐ',
       translation: 'Where is the train station?',
+    },
+  ],
+  hi: [
+    {
+      sentence: 'नमस्ते, मेरा नाम अली है।',
+      phonetic: 'na-mas-tay may-raa naam a-lee hai',
+      translation: 'Hello, my name is Ali.',
+    },
+    {
+      sentence: 'शौचालय कहाँ है?',
+      phonetic: 'shau-cha-lay ka-haan hai',
+      translation: 'Where is the bathroom?',
+    },
+    {
+      sentence: 'क्या आप इसे थोड़ा धीरे दोहरा सकते हैं?',
+      phonetic: 'kyaa aap ise tho-daa dhee-ray do-haa-raa sak-tay hain',
+      translation: 'Could you repeat that more slowly?',
     },
   ],
 }
@@ -185,7 +204,7 @@ function resolvePhrasebookMatch(text, entries) {
 }
 
 async function postTrainer(body, idToken) {
-  const response = await fetch('/.netlify/functions/voice-session', {
+  const response = await fetch(buildApiUrl('/api/voice-session'), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${idToken}`,
@@ -204,20 +223,10 @@ async function postTrainer(body, idToken) {
   return payload
 }
 
-function getPracticeCaption({ phrase, tutorState, recorderStatus, isOnline }) {
-  if (!phrase.trim()) return 'Type or dictate a phrase first'
-  if (!isOnline) return 'Offline replay works. New feedback needs internet.'
-  if (recorderStatus === 'recording') return 'Press again to stop recording'
-  if (tutorState === 'thinking') return 'Listening to your take...'
-  if (tutorState === 'loading') return 'Preparing coach audio...'
-  if (tutorState === 'playing') return 'Coach audio is playing'
-  return 'Press the mic to practice'
-}
-
-function getActivityLevel(bars = []) {
-  if (!bars.length) return 0.15
-  const total = bars.reduce((sum, value) => sum + Number(value || 0), 0)
-  return Math.max(0.14, Math.min(1, total / bars.length))
+async function speakLocalPhrase(text, languageCode, rate = 1) {
+  if (!text || !isOfflineTtsAvailable()) return false
+  speakOffline(text, languageCode, Math.max(0.72, Math.min(1.02, rate)))
+  return true
 }
 
 function getTrainPhase({ hasCoachAudio, hasAnalysis, recorderStatus, tutorState }) {
@@ -261,6 +270,7 @@ export function TrainerPage({ auth, route }) {
   const activeSession = useActiveSession()
 
   const offline = useOfflinePractice({ idToken: auth.session?.idToken })
+  const offlineAi = useOfflineAI()
   const phrasebook = useMemo(() => buildPhrasebook(languageCode), [languageCode])
   const language = useMemo(
     () => SUPPORTED_LANGUAGES.find((entry) => entry.code === languageCode) || SUPPORTED_LANGUAGES[0],
@@ -329,12 +339,6 @@ export function TrainerPage({ auth, route }) {
     [currentStep, languageCode, liveTurn?.visualGuide?.word, phraseMeta, practiceText, resolvedPrompt?.articulationGuide, selectedWord],
   )
   const hasCoachAudio = Boolean(lastAudioRef.current || liveTurn?.audioBase64)
-  const trainPhase = getTrainPhase({
-    hasCoachAudio,
-    hasAnalysis: Boolean(analysis),
-    recorderStatus: recorder.status,
-    tutorState,
-  })
 
   useEffect(() => {
     if (profile.languageLearning) {
@@ -388,7 +392,17 @@ export function TrainerPage({ auth, route }) {
   }
 
   async function playCoachAudio(rate, options = {}) {
-    if (!lastAudioRef.current) return
+    if (!lastAudioRef.current) {
+      if (practiceText.trim()) {
+        setTutorState('playing')
+        try {
+          await speakLocalPhrase(practiceText, languageCode, rate || Number(profile.voiceSpeed || 1))
+        } finally {
+          setTutorState('idle')
+        }
+      }
+      return
+    }
     audioRef.current?.pause()
     setTutorState('playing')
     try {
@@ -493,14 +507,38 @@ export function TrainerPage({ auth, route }) {
       setError('Type a phrase first.')
       return null
     }
-    if (!offline.isOnline) {
-      setError('Connect to the internet to generate coach audio.')
-      return null
-    }
 
     const phrasebookMatch = resolvePhrasebookMatch(text, phrasebook)
     const requestText = phrasebookMatch?.targetText || text
     const translated = Boolean(phrasebookMatch?.translated)
+
+    if ((!offline.isOnline || !language.ttsModel) && phrasebookMatch) {
+      const localPrompt = {
+        sourceText: phrasebookMatch.sourceText,
+        targetText: phrasebookMatch.targetText,
+        translation: phrasebookMatch.translation,
+        translated: true,
+        phonetic: phrasebookMatch.phonetic || buildPhoneticHint(phrasebookMatch.targetText),
+        coachNote: `Local voice preview is being used for ${language.label}.`,
+        articulationGuide: buildPracticeGuide({
+          word: null,
+          phraseMeta: null,
+          phrase: phrasebookMatch.targetText,
+          languageCode,
+        }),
+      }
+      setResolvedPrompt(localPrompt)
+      setCoachReady(false)
+      setError('')
+      setTutorState('idle')
+      if (autoplay) await speakLocalPhrase(localPrompt.targetText, languageCode, profile.voiceSpeed || 1)
+      return localPrompt
+    }
+
+    if (!offline.isOnline) {
+      setError('Connect to the internet to generate coach audio.')
+      return null
+    }
 
     setError('')
     setTutorState('loading')
@@ -547,6 +585,32 @@ export function TrainerPage({ auth, route }) {
       }
       return result
     } catch (requestError) {
+      if (phrasebookMatch) {
+        const localPrompt = {
+          sourceText: phrasebookMatch.sourceText,
+          targetText: phrasebookMatch.targetText,
+          translation: phrasebookMatch.translation,
+          translated: true,
+          phonetic: phrasebookMatch.phonetic || buildPhoneticHint(phrasebookMatch.targetText),
+          coachNote: sayLikeLocal
+            ? `This is the more natural ${language.label} phrasing for what you typed.`
+            : `This is the clear textbook phrasing for what you typed.`,
+          articulationGuide: buildPracticeGuide({
+            word: null,
+            phraseMeta: null,
+            phrase: phrasebookMatch.targetText,
+            languageCode,
+          }),
+        }
+        setResolvedPrompt(localPrompt)
+        setCoachReady(false)
+        setTutorState('idle')
+        if (autoplay) {
+          await speakLocalPhrase(localPrompt.targetText, languageCode, profile.voiceSpeed || 1)
+        }
+        return localPrompt
+      }
+
       setError(requestError.message)
       setTutorState('idle')
       return null
@@ -659,6 +723,13 @@ export function TrainerPage({ auth, route }) {
     },
   })
 
+  const trainPhase = getTrainPhase({
+    hasCoachAudio,
+    hasAnalysis: Boolean(analysis),
+    recorderStatus: recorder.status,
+    tutorState,
+  })
+
   async function handlePracticeTap() {
     if (!practiceText.trim()) {
       setError(currentStep ? 'Tap Hear first, then repeat the line.' : 'Type a phrase first.')
@@ -687,7 +758,7 @@ export function TrainerPage({ auth, route }) {
     }
   }
 
-  function handlePhraseInputMic() {
+  const handlePhraseInputMic = useCallback(() => {
     const Recognition =
       typeof window === 'undefined' ? null : window.SpeechRecognition || window.webkitSpeechRecognition
 
@@ -719,7 +790,22 @@ export function TrainerPage({ auth, route }) {
 
     inputRecognitionRef.current = recognition
     recognition.start()
-  }
+  }, [inputListenState, nativeLanguage.locale])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const intent = window.sessionStorage.getItem('uselang-trainer-intent')
+    if (intent !== 'voice') return
+    if (currentStep || phrase.trim()) {
+      window.sessionStorage.removeItem('uselang-trainer-intent')
+      return
+    }
+    const timer = window.setTimeout(() => {
+      handlePhraseInputMic()
+      window.sessionStorage.removeItem('uselang-trainer-intent')
+    }, 220)
+    return () => window.clearTimeout(timer)
+  }, [currentStep, handlePhraseInputMic, phrase])
 
   async function handleDownload() {
     if (!practiceText.trim()) {
@@ -792,30 +878,22 @@ export function TrainerPage({ auth, route }) {
   }
 
   const accuracy = typeof analysis?.accuracy === 'number' ? Math.round(analysis.accuracy * 100) : null
-  const orbTone =
-    accuracy === null
-      ? 'accent'
-      : accuracy >= 90
-        ? 'mint'
-        : accuracy >= 72
-          ? 'accent'
-          : 'amber'
-  const orbState =
-    recorder.status === 'recording'
-      ? 'listening'
-      : tutorState === 'thinking' || tutorState === 'loading'
-        ? 'thinking'
-        : tutorState === 'playing'
-          ? 'speaking'
-          : 'idle'
 
   return (
     <AppShell auth={auth} route={route} section="trainer">
-      <div className="px-5 pt-[calc(env(safe-area-inset-top)+3.45rem)]">
+      <div className="px-5 pt-[calc(env(safe-area-inset-top)+1.35rem)]">
         <div className="flex items-center justify-between text-[0.72rem] font-medium text-ink/35">
           <span>{currentStep ? 'Active lesson' : 'Train'}</span>
           <LanguagePicker languageCode={languageCode} onChange={setLanguageCode} />
-          <span>{offline.isOnline ? 'Online' : 'Offline'}</span>
+          <div className="flex items-center gap-2">
+            {offlineAi.localAiAvailable ? (
+              <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.65rem] font-medium" style={{ background: 'rgba(48,209,88,0.1)', color: '#1c7c3a' }}>
+                <span className="h-1.5 w-1.5 rounded-full bg-[#30d158]" />
+                Local AI
+              </span>
+            ) : null}
+            <span>{offline.isOnline ? 'Online' : 'Offline'}</span>
+          </div>
         </div>
       </div>
 
@@ -830,18 +908,106 @@ export function TrainerPage({ auth, route }) {
           <p className="mx-auto mt-2 max-w-[16.5rem] text-[0.84rem] leading-snug text-ink/38">
             {currentStep
               ? currentStep.scenario
-              : practiceTranslation || `Type in ${nativeLanguage.label}. UseLang will bring it back in ${language.label}.`}
+              : practiceTranslation || `Type in ${nativeLanguage.label}. Lane will bring it back in ${language.label}.`}
           </p>
         </div>
 
+        <section
+          className="mt-6 rounded-[1.85rem] bg-white/90 p-4"
+          style={{ boxShadow: '0 18px 40px -24px rgba(15, 20, 25, 0.16)' }}
+        >
+          <StepRail current={trainPhase} />
+          <div className="mt-4 rounded-[1.45rem] bg-[#faf7f2] px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[0.66rem] font-semibold uppercase tracking-[0.04em] text-ink/26">
+                  {currentStep ? 'Say this naturally' : 'Start in English'}
+                </p>
+                <p className="mt-1 text-[1.06rem] font-semibold leading-snug text-ink">
+                  {currentStep
+                    ? currentStep.expectedPhrase
+                    : practiceText.trim() || 'Tell Lane what you want to say.'}
+                </p>
+                <p className="mt-1 text-[0.78rem] leading-snug text-ink/42">
+                  {currentStep
+                    ? currentStep.translation
+                    : `Lane brings it back in ${language.label}, then you hear it, repeat it, and improve it.`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handlePracticeTap}
+                disabled={tutorState === 'thinking' || tutorState === 'loading' || (!practiceText.trim() && !currentStep)}
+                className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-white transition disabled:opacity-40 ${
+                  recorder.status === 'recording'
+                    ? 'bg-[#1a1714] shadow-[0_18px_42px_-22px_rgba(26,23,20,0.48)]'
+                    : 'bg-[#c9a97a] shadow-[0_18px_42px_-22px_rgba(201,169,122,0.48)]'
+                }`}
+              >
+                {recorder.status === 'recording' ? <StopGlyph /> : <MicGlyph />}
+              </button>
+            </div>
+            <div className="mt-4 rounded-[1.2rem] bg-white px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[0.66rem] font-semibold uppercase tracking-[0.04em] text-ink/26">
+                    {recorder.status === 'recording'
+                      ? 'Listening'
+                      : tutorState === 'thinking'
+                        ? 'Improving'
+                        : tutorState === 'playing'
+                          ? 'Coach playback'
+                          : 'Ready'}
+                  </p>
+                  <p className="mt-1 text-[0.76rem] leading-snug text-ink/40">
+                    {currentStep
+                      ? 'Stay on the line until you sound clean, or say “next one”.'
+                      : recorder.status === 'recording'
+                        ? 'Speak now. Lane listens, scores, then sharpens the phrase.'
+                        : 'Type it or press the mic. Hear it, try it, compare it, then save it.'}
+                  </p>
+                </div>
+                {accuracy !== null ? (
+                  <span className={`rounded-full px-3 py-1.5 text-[0.82rem] font-semibold ${accuracy >= 88 ? 'bg-mint/12 text-mint' : accuracy >= 70 ? 'bg-amber/[0.12] text-amber' : 'bg-accent/[0.1] text-accent'}`}>
+                    {accuracy}%
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 h-8">
+            <VoiceWave bars={recorder.bars} active={recorder.status === 'recording' || tutorState === 'playing'} />
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ConsoleMeta active={recorder.status === 'recording'}>Press mic to speak</ConsoleMeta>
+            <ConsoleMeta active={Boolean(accuracy !== null && accuracy >= 90)}>Auto-advance at 90%+</ConsoleMeta>
+            <ConsoleMeta active={Boolean(analysis?.passed)}>Say “next one” to skip</ConsoleMeta>
+          </div>
+        </section>
+
+        {liveSession?.completedAt ? (
+          <section
+            className="mt-5 rounded-[1.7rem] bg-[#1a1714] px-4 py-4 text-white"
+            style={{ boxShadow: '0 18px 42px -28px rgba(26,23,20,0.38)' }}
+          >
+            <p className="text-[0.66rem] font-semibold uppercase tracking-[0.05em] text-white/56">Completed</p>
+            <p className="mt-1 text-[1rem] font-semibold leading-snug">You can now {liveLesson?.scenarioMeta?.completionLine?.replace(/^You can now\s*/i, '').replace(/\.$/, '') || 'use this in a real conversation'}.</p>
+            <button
+              type="button"
+              onClick={() => activeSession.clear()}
+              className="mt-3 rounded-full bg-white/12 px-3 py-1.5 text-[0.72rem] font-medium text-white/84"
+            >
+              Start another one
+            </button>
+          </section>
+        ) : null}
+
         {currentStep ? (
           <section
-            className="mt-6 rounded-[1.85rem] bg-white/90 p-5"
+            className="mt-5 rounded-[1.85rem] bg-white/90 p-5"
             style={{ boxShadow: '0 18px 40px -24px rgba(15, 20, 25, 0.16)' }}
           >
-            <StepRail current={trainPhase} />
-
-            <div className="mt-5 rounded-[1.3rem] bg-ink/[0.025] px-4 py-3.5">
+            <div className="rounded-[1.3rem] bg-ink/[0.025] px-4 py-3.5">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-[0.66rem] font-semibold uppercase tracking-[0.04em] text-ink/26">
@@ -856,21 +1022,6 @@ export function TrainerPage({ auth, route }) {
               </div>
             </div>
 
-            <div className="mt-6 flex flex-col items-center">
-              <AISphere
-                state={orbState}
-                activityLevel={getActivityLevel(recorder.bars)}
-                onTap={handlePracticeTap}
-                disabled={tutorState === 'thinking' || tutorState === 'loading'}
-                size={188}
-                tone={orbTone}
-                label={recorder.status === 'recording' ? 'Repeat now' : tutorState === 'thinking' ? 'Improving...' : 'Tap to speak'}
-              />
-              <div className="mt-2 h-8">
-                <VoiceWave bars={recorder.bars} active={recorder.status === 'recording' || tutorState === 'playing'} />
-              </div>
-            </div>
-
             <div className="mt-5 rounded-[1.15rem] bg-accent/[0.05] px-4 py-3">
               <p className="text-[0.66rem] font-semibold uppercase tracking-[0.04em] text-accent/60">
                 Coach tip
@@ -882,7 +1033,7 @@ export function TrainerPage({ auth, route }) {
           </section>
         ) : (
           <section
-            className="mt-6 rounded-[1.7rem] bg-white/88 p-4"
+            className="mt-5 rounded-[1.7rem] bg-white/88 p-4"
             style={{ boxShadow: '0 12px 36px -20px rgba(15, 20, 25, 0.14)' }}
           >
             <div className="flex items-start justify-between gap-3">
@@ -894,14 +1045,14 @@ export function TrainerPage({ auth, route }) {
                   Start in {nativeLanguage.label}
                 </p>
                 <p className="mt-1 max-w-[14rem] text-[0.76rem] leading-snug text-ink/38">
-                  Tell UseLang what you want to say. It will turn that into a clean {language.label} phrase you can hear, repeat, and save.
+                  Tell Lane what you want to say. It will turn that into a clean {language.label} phrase you can hear, repeat, and save.
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSayLikeLocal((current) => !current)}
                 className={`rounded-full px-3 py-1.5 text-[0.7rem] font-medium ${
-                  sayLikeLocal ? 'bg-accent/[0.08] text-accent' : 'bg-ink/[0.04] text-ink/45'
+                  sayLikeLocal ? 'bg-[#f5ede0] text-[#c9a97a]' : 'bg-ink/[0.04] text-ink/45'
                 }`}
               >
                 {sayLikeLocal ? 'Say it like a native' : 'Textbook'}
@@ -927,66 +1078,15 @@ export function TrainerPage({ auth, route }) {
               </button>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-4 flex items-center justify-between">
               <p className="text-[0.66rem] font-semibold uppercase tracking-[0.04em] text-ink/28">
-                Examples
+                Try a phrase
               </p>
+              <p className="text-[0.64rem] text-ink/24">Tap once to fill the prompt</p>
             </div>
 
-            <div className="mt-3 grid gap-2.5">
-              {starters.map((starter) => (
-                <button
-                  key={starter.sentence}
-                  type="button"
-                  onClick={() => setPhrase(starter.translation)}
-                  className="relative overflow-hidden flex items-center justify-between rounded-[1.1rem] bg-ink/[0.03] px-3.5 py-3 text-left transition active:scale-[0.99]"
-                >
-                  <div className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-accent/70" />
-                  <div className="min-w-0 flex-1">
-                    <p className="pl-1.5 text-[0.8rem] font-semibold text-ink">{starter.translation}</p>
-                    <p className="mt-0.5 pl-1.5 text-[0.7rem] text-ink/36">{starter.sentence}</p>
-                  </div>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-[0.68rem] font-medium text-accent">
-                    Use
-                  </span>
-                </button>
-              ))}
-            </div>
+            <StarterCarousel starters={starters} onSelect={(t) => setPhrase(t)} />
 
-            <div className="mt-5 rounded-[1.35rem] bg-accent/[0.05] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[0.66rem] font-semibold uppercase tracking-[0.04em] text-accent/60">
-                    Practice
-                  </p>
-                  <p className="mt-1 text-[0.84rem] leading-snug text-ink/58">
-                    {getPracticeCaption({
-                      phrase: practiceText,
-                      tutorState,
-                      recorderStatus: recorder.status,
-                      isOnline: offline.isOnline,
-                    })}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handlePracticeTap}
-                  disabled={!practiceText.trim() || tutorState === 'thinking' || tutorState === 'loading'}
-                  className={`flex h-14 w-14 items-center justify-center rounded-full transition ${
-                    recorder.status === 'recording'
-                      ? 'bg-accent text-white shadow-[0_14px_30px_-16px_rgba(0,122,255,0.6)]'
-                      : 'bg-white text-accent'
-                  } disabled:opacity-35`}
-                  style={{ boxShadow: recorder.status === 'recording' ? undefined : '0 12px 26px -18px rgba(15, 20, 25, 0.18)' }}
-                >
-                  <MicGlyph />
-                </button>
-              </div>
-
-              <div className="mt-4 rounded-[1rem] bg-white/88 px-4 py-3">
-                <VoiceWave bars={recorder.bars} active={recorder.status === 'recording' || tutorState === 'playing'} />
-              </div>
-            </div>
           </section>
         )}
 
@@ -1402,6 +1502,32 @@ function FeedbackCard({
   )
 }
 
+function ComparePanel({ coachReady, userTakeReady, onPlayCoach, onPlayUser, onClose }) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 10 }}
+      className="mt-4 rounded-[1.45rem] bg-white/90 p-4"
+      style={{ boxShadow: '0 14px 36px -20px rgba(15, 20, 25, 0.16)' }}
+    >
+      <div className="flex items-center justify-between">
+        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.04em] text-ink/28">Compare</p>
+        <button type="button" onClick={onClose} className="text-[0.72rem] font-medium text-ink/35">
+          Close
+        </button>
+      </div>
+      <p className="mt-1 text-[0.82rem] leading-snug text-ink/50">
+        Play both back-to-back to hear the difference.
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <CompareButton label="Coach" ready={coachReady} onPlay={onPlayCoach} />
+        <CompareButton label="Your take" ready={userTakeReady} onPlay={onPlayUser} />
+      </div>
+    </motion.section>
+  )
+}
+
 function CompareButton({ label, ready, onPlay }) {
   return (
     <button
@@ -1415,6 +1541,34 @@ function CompareButton({ label, ready, onPlay }) {
         {ready ? 'Play' : 'Empty'}
       </span>
     </button>
+  )
+}
+
+function ConsoleMeta({ children, active = false }) {
+  return (
+    <span className={`rounded-full px-3 py-1.5 text-[0.68rem] font-medium ${
+      active ? 'bg-[#c9a97a]/12 text-[#c9a97a]' : 'bg-ink/[0.04] text-ink/42'
+    }`}>
+      {children}
+    </span>
+  )
+}
+
+function MicGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0014 0" />
+      <path d="M12 18v3" />
+    </svg>
+  )
+}
+
+function StopGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="6" y="6" width="12" height="12" rx="2.6" />
+    </svg>
   )
 }
 
@@ -1511,12 +1665,122 @@ function LanguagePicker({ languageCode, onChange }) {
   )
 }
 
-function MicGlyph() {
+function StepRail({ current }) {
+  const steps = ['listen', 'repeat', 'improve']
   return (
-    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="9" y="3" width="6" height="11" rx="3" />
-      <path d="M5 11a7 7 0 0014 0" />
-      <path d="M12 18v3" />
-    </svg>
+    <div className="flex items-center gap-2">
+      {steps.map((step, i) => {
+        const active = step === current
+        const done = steps.indexOf(current) > i
+        return (
+          <div key={step} className="flex items-center gap-2">
+            {i > 0 ? <div className={`h-px w-4 ${done ? 'bg-accent' : 'bg-ink/[0.08]'}`} /> : null}
+            <span className={`rounded-full px-2.5 py-1 text-[0.64rem] font-semibold uppercase tracking-[0.04em] ${
+              active ? 'bg-accent/[0.1] text-accent' : done ? 'bg-accent/[0.06] text-accent/60' : 'bg-ink/[0.04] text-ink/25'
+            }`}>{step}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function StarterCarousel({ starters, onSelect }) {
+  const [idx, setIdx] = useState(0)
+  const timerRef = useRef(null)
+  const dragStartX = useRef(0)
+
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      setIdx((i) => (i + 1) % starters.length)
+    }, 3200)
+    return () => clearInterval(timerRef.current)
+  }, [starters.length])
+
+  function advance(dir) {
+    clearInterval(timerRef.current)
+    setIdx((i) => {
+      const next = i + dir
+      return next < 0 ? starters.length - 1 : next >= starters.length ? 0 : next
+    })
+  }
+
+  const starter = starters[idx]
+
+  return (
+    <div className="mt-3">
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={idx}
+          initial={{ opacity: 0, x: 28 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -22 }}
+          transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.18}
+          onDragStart={(_, info) => { dragStartX.current = info.offset.x }}
+          onDragEnd={(_, info) => {
+            if (info.offset.x < -45) advance(1)
+            else if (info.offset.x > 45) advance(-1)
+          }}
+          className="relative cursor-pointer select-none overflow-hidden rounded-[1.3rem] bg-accent/[0.06] px-4 py-4"
+          onClick={() => onSelect(starter.translation)}
+        >
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-1 rounded-r-full bg-accent/50" />
+          <p className="text-[0.66rem] font-semibold uppercase tracking-[0.06em] text-accent/55">
+            Try this phrase
+          </p>
+          <p className="mt-2 text-[0.98rem] font-semibold leading-snug text-ink">
+            {starter.translation}
+          </p>
+          <p className="mt-1 text-[0.8rem] font-medium text-ink/45">{starter.sentence}</p>
+          <p className="mt-1.5 font-mono text-[0.7rem] text-ink/28">{starter.phonetic}</p>
+          <div className="mt-3 flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              {starters.map((_, i) => (
+                <motion.span
+                  key={i}
+                  animate={{ width: i === idx ? '1.1rem' : '0.28rem', opacity: i === idx ? 1 : 0.25 }}
+                  transition={{ duration: 0.25 }}
+                  className="inline-block h-[3px] rounded-full bg-accent"
+                />
+              ))}
+            </div>
+            <span className="flex items-center gap-1 text-[0.72rem] font-semibold text-accent">
+              Use this
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </span>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+
+      {/* Prev / Next row */}
+      <div className="mt-1.5 flex items-center justify-between px-1">
+        <button
+          type="button"
+          onClick={() => advance(-1)}
+          className="flex items-center gap-1 text-[0.69rem] font-medium text-ink/28 transition active:text-ink/50"
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+          Prev
+        </button>
+        <span className="text-[0.65rem] text-ink/20">{idx + 1} / {starters.length}</span>
+        <button
+          type="button"
+          onClick={() => advance(1)}
+          className="flex items-center gap-1 text-[0.69rem] font-medium text-ink/28 transition active:text-ink/50"
+        >
+          Next
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M5 12h14M12 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+    </div>
   )
 }

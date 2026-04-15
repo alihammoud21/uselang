@@ -67,7 +67,18 @@ export function AISphere({
   const isActive = state === 'listening' || state === 'speaking'
   const resolvedLabel = label ?? STATE_LABEL[state]
   const palette =
-    tone === 'mint'
+    tone === 'warm'
+      ? {
+          halo:     'rgba(201,169,122,0.09)',
+          ring:     'rgba(201,169,122,0.15)',
+          deep:     'rgba(201,169,122,0.52)',
+          deepSoft: 'rgba(201,169,122,0.20)',
+          soft:     'rgba(235,218,195,0.42)',
+          warm:     'rgba(252,247,242,0.65)',
+          surface:  'linear-gradient(145deg,#ffffff 0%,#fdf9f4 52%,#f8f0e4 100%)',
+          inset:    'inset 0 -8px 20px rgba(201,169,122,0.06), inset 0 2px 0 rgba(255,255,255,0.92)',
+        }
+      : tone === 'mint'
       ? {
           halo: 'rgba(48, 209, 136, 0.12)',
           ring: 'rgba(48, 209, 136, 0.18)',

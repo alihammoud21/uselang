@@ -4,9 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "api:dev": "node --env-file=.env server/api-server.js",
     "lesson:dev": "node services/lesson-generator/server.js",
     "dev": "vite --config vite.config.js",
-    "dev:full": "sh -c 'npm run lesson:dev & npm run dev'",
+    "dashboard:dev": "vite --config vite.usage-dashboard.config.js",
+    "dashboard:build": "vite build --config vite.usage-dashboard.config.js",
+    "dev:full": "sh -c 'npm run api:dev & npm run lesson:dev & npm run dev'",
     "build": "vite build --config vite.config.js && node scripts/write-redirects.mjs",
     "preview:netlify": "npm run build && vite preview --config vite.config.js --host 0.0.0.0 --port 4173",
     "preview": "vite preview --config vite.config.js",
@@ -14,10 +17,12 @@
   },
   "dependencies": {
     "express": "^5.2.1",
+    "fdir": "^6.5.0",
     "firebase": "^12.12.0",
     "framer-motion": "^12.9.2",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "tinyglobby": "^0.2.16"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
@@ -28,6 +33,6 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
     "tailwindcss": "^4.1.4",
-    "vite": "^8.0.4"
+    "vite": "^8.0.8"
   }
 }

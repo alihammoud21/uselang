@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   CONFIDENCE_LEVELS,
   CORRECTION_INTENSITY,
@@ -8,7 +9,6 @@ import {
 } from '@shared/languages'
 import { AppShell, AppHeader } from '@/components/AppShell'
 import { APP_ROUTES } from '@/lib/routes'
-
 const LEARNING_GOALS = [
   { id: 'travel', label: 'Travel' },
   { id: 'work', label: 'Business' },
@@ -58,6 +58,8 @@ function SettingsForm({ auth, route }) {
     sayLikeLocal: profile.sayLikeLocal ?? true,
   }))
   const [saved, setSaved] = useState(false)
+  const [showUpgrade, setShowUpgrade] = useState(false)
+  const isPro = profile.plan === 'pro' || profile.plan === 'paid'
 
   function update(key, value) {
     setSaved(false)
@@ -82,12 +84,11 @@ function SettingsForm({ auth, route }) {
           className="relative overflow-hidden rounded-[1.8rem] bg-white/92 p-5"
           style={{ boxShadow: '0 18px 44px -24px rgba(15, 20, 25, 0.16)' }}
         >
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[radial-gradient(circle_at_top_right,rgba(0,122,255,0.14),transparent_42%),radial-gradient(circle_at_top_left,rgba(255,178,208,0.16),transparent_42%)]" />
-          <p className="text-[0.66rem] font-semibold uppercase tracking-[0.05em] text-accent/55">
+          <p className="text-[0.66rem] font-semibold uppercase tracking-[0.05em]" style={{ color: '#c9a97a' }}>
             Your tutor setup
           </p>
           <h2 className="mt-2 text-[1.18rem] font-bold tracking-[-0.03em] text-ink">
-            Tune the coach before you speak
+            Tune the experience once, then speak
           </h2>
           <p className="mt-1 max-w-[17rem] text-[0.8rem] leading-snug text-ink/42">
             Guidance stays in your language. Practice audio stays in the target language with a native voice.
@@ -105,12 +106,19 @@ function SettingsForm({ auth, route }) {
           </div>
         </section>
 
-        {/* language */}
-        <SettingsGroup title="Language">
-          <SelectRow label="I'm learning" value={form.languageLearning} onChange={(v) => update('languageLearning', v)}
-            options={SUPPORTED_LANGUAGES.map((l) => ({ value: l.code, label: l.label }))} />
-          <SelectRow label="I speak" value={form.nativeLanguage} onChange={(v) => update('nativeLanguage', v)}
-            options={SUPPORTED_LANGUAGES.map((l) => ({ value: l.code, label: l.label }))} />
+        <SettingsGroup title="Languages">
+          <OptionGrid
+            label="I'm learning"
+            value={form.languageLearning}
+            onChange={(v) => update('languageLearning', v)}
+            options={SUPPORTED_LANGUAGES.map((l) => ({ value: l.code, label: l.label }))}
+          />
+          <OptionGrid
+            label="Guide me in"
+            value={form.nativeLanguage}
+            onChange={(v) => update('nativeLanguage', v)}
+            options={SUPPORTED_LANGUAGES.map((l) => ({ value: l.code, label: l.label }))}
+          />
           <div className="rounded-[1rem] bg-ink/[0.03] px-3.5 py-3">
             <p className="text-[0.72rem] font-medium text-ink/40">Voice output</p>
             <p className="mt-1 text-[0.8rem] leading-snug text-ink/56">
@@ -119,37 +127,33 @@ function SettingsForm({ auth, route }) {
           </div>
         </SettingsGroup>
 
-        {/* learning goal */}
         <SettingsGroup title="Learning goal">
           <div className="grid grid-cols-2 gap-2">
             {LEARNING_GOALS.map((g) => {
               const active = form.goal === g.id
               return (
                 <button key={g.id} type="button" onClick={() => update('goal', g.id)}
-                  className={`flex items-center gap-3 rounded-[1rem] px-3 py-3 text-left transition ${active ? 'bg-accent/[0.06] ring-1 ring-accent/20' : 'bg-ink/[0.025]'}`}
+                  className={`flex items-center gap-3 rounded-[1rem] px-3 py-3 text-left transition ${active ? 'ring-1 ring-[#c9a97a]/30 bg-[#f5ede0]' : 'bg-[#faf7f2]'}`}
                 >
-                  <span className={`flex h-9 w-9 items-center justify-center rounded-full ${active ? 'bg-accent text-white' : 'bg-white text-ink/40'}`}>
+                  <span className={`flex h-9 w-9 items-center justify-center rounded-full ${active ? 'bg-[#c9a97a] text-white' : 'bg-white text-ink/40'}`}>
                     <GoalGlyph goalId={g.id} />
                   </span>
-                  <p className={`text-[0.76rem] font-medium ${active ? 'text-accent' : 'text-ink/50'}`}>{g.label}</p>
+                  <p className={`text-[0.76rem] font-medium ${active ? 'text-[#c9a97a]' : 'text-ink/50'}`}>{g.label}</p>
                 </button>
               )
             })}
           </div>
         </SettingsGroup>
 
-        {/* coach personality */}
-        <SettingsGroup title="Coach personality">
+        <SettingsGroup title="Coach style">
           <ChoiceRow items={TUTOR_STYLE_OPTIONS} value={form.tutorStyle} onChange={(v) => update('tutorStyle', v)} />
         </SettingsGroup>
 
-        {/* confidence level */}
         <SettingsGroup title="Your level">
           <ChoiceRow items={CONFIDENCE_LEVELS} value={form.confidenceLevel} onChange={(v) => update('confidenceLevel', v)} />
         </SettingsGroup>
 
-        {/* voice & correction */}
-        <SettingsGroup title="Voice & correction">
+        <SettingsGroup title="Coaching">
           <div className="px-1">
             <div className="flex items-center justify-between">
               <span className="text-[0.78rem] text-ink/50">Speech speed</span>
@@ -183,7 +187,7 @@ function SettingsForm({ auth, route }) {
               <button
                 type="button"
                 onClick={() => update('sayLikeLocal', !form.sayLikeLocal)}
-                className={`rounded-full px-3 py-1.5 text-[0.72rem] font-medium ${form.sayLikeLocal ? 'bg-accent/[0.08] text-accent' : 'bg-white text-ink/45'}`}
+                className={`rounded-full px-3 py-1.5 text-[0.72rem] font-medium ${form.sayLikeLocal ? 'bg-[#f5ede0] text-[#c9a97a]' : 'bg-white text-ink/45'}`}
               >
                 {form.sayLikeLocal ? 'Local phrasing' : 'Textbook'}
               </button>
@@ -191,21 +195,53 @@ function SettingsForm({ auth, route }) {
           </div>
         </SettingsGroup>
 
-        <SettingsGroup title="Private usage">
-          <div className="rounded-[1rem] bg-ink/[0.03] px-3.5 py-3">
-            <p className="text-[0.8rem] font-medium text-ink/55">Ling One</p>
-            <p className="mt-1 text-[0.72rem] leading-snug text-ink/38">
-              Open the private usage board to track minutes left, total voice calls, saved downloads, and session load.
-            </p>
+        {!isPro ? (
+          <SettingsGroup title="Subscription">
             <button
               type="button"
-              onClick={() => route.navigate(APP_ROUTES.usageDashboard)}
-              className="mt-3 rounded-full bg-accent/[0.08] px-3 py-1.5 text-[0.72rem] font-medium text-accent"
+              onClick={() => setShowUpgrade(true)}
+              className="upgrade-card w-full rounded-[1.25rem] p-4 text-left transition active:scale-[0.99]"
             >
-              Open Ling One
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[0.58rem] font-bold uppercase tracking-[0.08em] text-white">
+                    Upgrade
+                  </span>
+                  <p className="mt-2 text-[0.95rem] font-bold text-white">Lane Pro</p>
+                  <p className="mt-0.5 text-[0.74rem] text-white/65">Unlimited sessions, all features.</p>
+                </div>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/18 text-white">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                    <path d="M5 12h14M12 5l7 7-7 7" />
+                  </svg>
+                </span>
+              </div>
+              <div className="mt-3 flex gap-2">
+                {['Unlimited', '7-day trial', 'Cancel anytime'].map((f) => (
+                  <span key={f} className="upgrade-card-frost rounded-full px-2.5 py-1 text-[0.62rem] font-medium text-white">
+                    {f}
+                  </span>
+                ))}
+              </div>
             </button>
-          </div>
-        </SettingsGroup>
+          </SettingsGroup>
+        ) : (
+          <SettingsGroup title="Subscription">
+            <div className="rounded-[1.25rem] px-4 py-3.5" style={{ background: '#f5ede0' }}>
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full" style={{ background: '#c9a97a22', color: '#c9a97a' }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+                    <path d="M5 12l5 5L20 7" />
+                  </svg>
+                </span>
+                <div>
+                  <p className="text-[0.82rem] font-semibold" style={{ color: '#c9a97a' }}>Lane Pro — Active</p>
+                  <p className="text-[0.7rem] text-ink/38">All features unlocked. No daily limits.</p>
+                </div>
+              </div>
+            </div>
+          </SettingsGroup>
+        )}
 
         {auth.error ? (
           <div className="rounded-xl bg-danger/8 px-4 py-3 text-[0.78rem] text-danger">{auth.error}</div>
@@ -213,7 +249,7 @@ function SettingsForm({ auth, route }) {
 
         {/* actions */}
         <div className="grid gap-2">
-          <button type="submit" disabled={auth.busy} className="btn-primary w-full">
+          <button type="submit" disabled={auth.busy} className="btn-warm w-full">
             {auth.busy ? 'Saving...' : saved ? 'Saved' : 'Save changes'}
           </button>
           <button
@@ -225,6 +261,10 @@ function SettingsForm({ auth, route }) {
           </button>
         </div>
       </form>
+
+      <AnimatePresence>
+        {showUpgrade ? <SettingsUpgradeSheet onClose={() => setShowUpgrade(false)} /> : null}
+      </AnimatePresence>
     </AppShell>
   )
 }
@@ -238,20 +278,28 @@ function SettingsGroup({ title, children }) {
   )
 }
 
-function SelectRow({ label, value, onChange, options }) {
+function OptionGrid({ label, value, onChange, options }) {
   return (
-    <label className="block">
-      <span className="text-[0.72rem] font-medium text-ink/35">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-1.5 w-full appearance-none rounded-[1rem] bg-ink/[0.04] px-3.5 py-3 text-[0.82rem] font-medium text-ink"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-    </label>
+    <div>
+      <p className="text-[0.72rem] font-medium text-ink/35">{label}</p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {options.map((option) => {
+          const active = value === option.value
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => onChange(option.value)}
+              className={`rounded-[1rem] px-3 py-2.5 text-left text-[0.78rem] font-medium transition ${
+                active ? 'bg-[#f5ede0] text-[#c9a97a] ring-1 ring-[#c9a97a]/20' : 'bg-[#faf7f2] text-ink/54'
+              }`}
+            >
+              {option.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -266,7 +314,7 @@ function ChoiceRow({ items, value, onChange }) {
             type="button"
             onClick={() => onChange(option.id)}
             className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-left transition ${
-              active ? 'bg-accent/[0.06]' : 'bg-ink/[0.025]'
+              active ? 'bg-[#f5ede0]' : 'bg-ink/[0.025]'
             }`}
           >
             <div className="min-w-0 flex-1">
@@ -283,7 +331,7 @@ function ChoiceRow({ items, value, onChange }) {
 
 function Checkmark() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" className="text-accent shrink-0">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" className="shrink-0" style={{ color: '#c9a97a' }}>
       <path d="M5 12l5 5L20 7" />
     </svg>
   )
@@ -320,6 +368,81 @@ function getTutorStyleLabel(code) {
 
 function getCorrectionLabel(code) {
   return CORRECTION_INTENSITY.find((item) => item.id === code)?.label || 'Balanced'
+}
+
+function SettingsUpgradeSheet({ onClose }) {
+  const PLANS = [
+    { id: 'monthly', label: 'Monthly', price: '$9.99', period: '/month', badge: null },
+    { id: 'yearly', label: 'Yearly', price: '$59.99', period: '/year', badge: 'Save 50%' },
+  ]
+  const [selected, setSelected] = useState('yearly')
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', stiffness: 340, damping: 36 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-[430px] overflow-hidden rounded-t-[2rem] bg-white pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+      >
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="h-1 w-9 rounded-full bg-ink/10" />
+        </div>
+        <div className="upgrade-card mx-4 mt-2 rounded-[1.5rem] px-5 py-5 text-white">
+          <p className="text-[0.64rem] font-bold uppercase tracking-[0.1em] text-white/65">Lane Pro</p>
+          <h2 className="mt-1.5 text-[1.5rem] font-bold tracking-[-0.04em] text-white">Speak without limits</h2>
+          <p className="mt-1 text-[0.82rem] text-white/70">Unlimited AI coaching. No daily cap. Every feature unlocked.</p>
+        </div>
+        <div className="mt-4 flex gap-2.5 px-4">
+          {PLANS.map((plan) => (
+            <button
+              key={plan.id}
+              type="button"
+              onClick={() => setSelected(plan.id)}
+              className={`relative flex-1 rounded-[1.25rem] border-[1.5px] px-3.5 py-3 text-left transition ${
+                selected === plan.id ? 'border-accent bg-accent/[0.06]' : 'border-ink/[0.08] bg-white'
+              }`}
+            >
+              {plan.badge ? (
+                <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-accent px-2.5 py-0.5 text-[0.6rem] font-bold text-white">
+                  {plan.badge}
+                </span>
+              ) : null}
+              <p className={`text-[0.72rem] font-semibold ${selected === plan.id ? 'text-accent' : 'text-ink/40'}`}>{plan.label}</p>
+              <p className="mt-0.5 text-[1.15rem] font-bold tracking-[-0.03em] text-ink">{plan.price}</p>
+              <p className="text-[0.68rem] text-ink/35">{plan.period}</p>
+            </button>
+          ))}
+        </div>
+        <div className="mt-4 px-4">
+          <button
+            type="button"
+            className="btn-primary w-full !py-3.5 !text-[0.88rem]"
+            style={{ boxShadow: '0 12px 32px -8px rgba(34, 197, 94, 0.4)' }}
+          >
+            Start 7-day free trial
+          </button>
+          <p className="mt-2 text-center text-[0.68rem] text-ink/32">Cancel anytime. No charge during trial.</p>
+          <div className="mt-3 flex items-center justify-center gap-4">
+            <button type="button" className="text-[0.68rem] text-ink/30">Restore purchase</button>
+            <span className="text-ink/15">·</span>
+            <button type="button" className="text-[0.68rem] text-ink/30">Privacy</button>
+            <span className="text-ink/15">·</span>
+            <button type="button" className="text-[0.68rem] text-ink/30">Terms</button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  )
 }
 
 function GoalGlyph({ goalId }) {

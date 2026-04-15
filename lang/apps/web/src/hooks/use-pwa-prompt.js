@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
+import { isNativeShell } from '@/lib/native-shell'
 
 const STORAGE_KEY = 'lang.pwa.dismissed'
 
 function shouldShowIosPrompt() {
   if (typeof window === 'undefined') {
+    return false
+  }
+
+  if (isNativeShell()) {
     return false
   }
 
@@ -14,10 +19,15 @@ function shouldShowIosPrompt() {
 }
 
 export function usePwaPrompt() {
+  const nativeShell = isNativeShell()
   const [deferredPrompt, setDeferredPrompt] = useState(null)
-  const [visible, setVisible] = useState(() => shouldShowIosPrompt())
+  const [visible, setVisible] = useState(() => (nativeShell ? false : shouldShowIosPrompt()))
 
   useEffect(() => {
+    if (nativeShell) {
+      return undefined
+    }
+
     const dismissed = localStorage.getItem(STORAGE_KEY) === 'true'
     const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone
 
@@ -33,7 +43,7 @@ export function usePwaPrompt() {
     window.addEventListener('beforeinstallprompt', handlePrompt)
 
     return () => window.removeEventListener('beforeinstallprompt', handlePrompt)
-  }, [])
+  }, [nativeShell])
 
   return useMemo(
     () => ({

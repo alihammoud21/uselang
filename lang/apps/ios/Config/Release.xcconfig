@@ -1,0 +1,3 @@
+USELANG_WEB_SCHEME = https
+USELANG_WEB_HOST = uselang.app
+USELANG_WEB_PATH = /app

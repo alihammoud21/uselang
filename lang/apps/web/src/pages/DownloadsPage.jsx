@@ -68,7 +68,7 @@ export function DownloadsPage({ auth, route }) {
 
   return (
     <AppShell auth={auth} route={route} section="downloads">
-      <div className="px-5 pt-[calc(env(safe-area-inset-top)+3.45rem)]">
+      <div className="px-5 pt-[calc(env(safe-area-inset-top)+1.35rem)]">
         <div className="flex items-center justify-between text-[0.72rem] font-medium text-ink/35">
           <span>Library</span>
           <span>{offline.items.length} saved</span>

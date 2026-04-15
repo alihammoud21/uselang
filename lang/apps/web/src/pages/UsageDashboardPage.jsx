@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { APP_ROUTES } from '@/lib/routes'
+import { buildApiUrl } from '@/lib/runtime'
 
 const PASSWORD_KEY = 'lang.usage-dashboard.password'
 
 async function requestUsage(idToken, password) {
-  const response = await fetch('/.netlify/functions/admin-usage', {
+  const response = await fetch(buildApiUrl('/api/admin-usage'), {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${idToken}`,
@@ -200,6 +201,19 @@ export function UsageDashboardPage({ auth, route }) {
                   <MetricCard label="STT calls" value={String(data.usageStats.totalSttCalls || 0)} note="recorded takes" compact />
                   <MetricCard label="Plan builds" value={String(data.usageStats.customPlanBuilds || 0)} note="custom lesson drafts" compact />
                   <MetricCard label="Downloads" value={String(data.usageStats.downloadsSaved || 0)} note="saved offline" compact />
+                </div>
+              </section>
+
+              <section className="mt-4 rounded-[1.55rem] bg-white/88 p-4" style={{ boxShadow: '0 14px 36px -22px rgba(15, 20, 25, 0.14)' }}>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.05em] text-ink/25">Trainer & conversation</p>
+                <p className="mt-1 text-[0.74rem] leading-snug text-ink/38">
+                  Counts from the trainer and multi-turn practice flows.
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <MetricCard label="Trainer prompts" value={String(data.usageStats.trainerPrompts || 0)} note="coach requests" compact />
+                  <MetricCard label="Trainer evaluations" value={String(data.usageStats.trainerEvaluations || 0)} note="graded replies" compact />
+                  <MetricCard label="Conversation turns" value={String(data.usageStats.conversationTurns || 0)} note="back-and-forth steps" compact />
+                  <MetricCard label="Completed sessions" value={String(data.usageStats.completedSessions || 0)} note="finished scenarios" compact />
                 </div>
               </section>
 

@@ -1,0 +1,5 @@
+// iOS Simulator reaches your Mac's Vite server at 127.0.0.1 (npm run dev → :3001).
+// For a physical iPhone, replace the host with your Mac's LAN IP, e.g. 192.168.1.10:3001
+USELANG_WEB_SCHEME = http
+USELANG_WEB_HOST = 127.0.0.1:3001
+USELANG_WEB_PATH = /app

@@ -19,7 +19,7 @@ const NAV_ITEMS = [
   },
   {
     id: 'trainer',
-    label: 'Train',
+    label: 'Speak',
     path: APP_ROUTES.trainer,
     icon: (
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -101,20 +101,10 @@ export function AppShell({
   showNav = true,
   header = null,
   contentClassName = '',
-  showDynamicIsland = true,
 }) {
   return (
     <div className="app-stage min-h-screen">
       <div className="phone-shell flex flex-col">
-        {showDynamicIsland ? (
-          <div className="pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top)+0.65rem)] z-30 flex justify-center">
-            <div className="app-dynamic-island">
-              <span className="app-dynamic-island-camera" />
-              <span className="app-dynamic-island-dot" />
-              <span className="app-dynamic-island-speaker" />
-            </div>
-          </div>
-        ) : null}
         {header}
 
         <div className={`relative z-10 flex-1 overflow-y-auto pb-[calc(6.75rem+env(safe-area-inset-bottom))] ${contentClassName}`}>
@@ -132,14 +122,26 @@ export function AppShell({
                     type="button"
                     onClick={() => route.navigate(item.path)}
                     className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-[1.1rem] px-1 py-1.5 transition ${
-                      active ? 'bg-accent/[0.08]' : ''
+                      item.id === 'trainer'
+                        ? `rounded-[1.35rem] px-2 py-2.5 shadow-[0_12px_28px_-20px_rgba(60,45,25,0.18)] ${active ? 'bg-[#1a1714] text-white' : 'bg-white'}`
+                        : active
+                          ? 'bg-[#c9a97a]/[0.10]'
+                          : ''
                     }`}
                     aria-current={active ? 'page' : undefined}
                   >
-                    <span className={`transition-colors duration-150 ${active ? 'text-accent' : 'text-ink/30'}`}>
+                    <span className={`transition-colors duration-150 ${
+                      item.id === 'trainer'
+                        ? active ? 'text-white' : 'text-[#c9a97a]'
+                        : active ? 'text-[#c9a97a]' : 'text-ink/30'
+                    }`}>
                       {active ? item.iconFilled : item.icon}
                     </span>
-                    <span className={`truncate text-[0.54rem] font-medium leading-none transition-colors duration-150 ${active ? 'text-accent' : 'text-ink/30'}`}>
+                    <span className={`truncate text-[0.54rem] font-medium leading-none transition-colors duration-150 ${
+                      item.id === 'trainer'
+                        ? active ? 'text-white/82' : 'text-ink/34'
+                        : active ? 'text-[#c9a97a]' : 'text-ink/30'
+                    }`}>
                       {item.label}
                     </span>
                   </button>
@@ -155,7 +157,7 @@ export function AppShell({
 
 export function AppHeader({ title, subtitle, right = null, compact = false }) {
   return (
-    <header className={`relative z-10 px-5 ${compact ? 'pt-[calc(env(safe-area-inset-top)+3.25rem)] pb-2' : 'pt-[calc(env(safe-area-inset-top)+3.55rem)] pb-3'}`}>
+    <header className={`relative z-10 px-5 ${compact ? 'pt-[calc(env(safe-area-inset-top)+1.4rem)] pb-2' : 'pt-[calc(env(safe-area-inset-top)+1.75rem)] pb-3'}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-[1.65rem] font-bold leading-tight tracking-[-0.03em] text-ink">

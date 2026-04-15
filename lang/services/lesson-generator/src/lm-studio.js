@@ -1,7 +1,7 @@
 import { buildMessages } from './prompts.js'
 import { parseModelJson, validateLessonPayload } from './validate.js'
 
-const DEFAULT_MODEL = 'local-model'
+const DEFAULT_MODEL = 'gemma-3-4b-it'
 const DEFAULT_URL = 'http://localhost:1234/v1/chat/completions'
 
 async function requestLmStudio(kind, payload) {

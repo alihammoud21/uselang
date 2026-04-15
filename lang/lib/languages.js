@@ -57,11 +57,19 @@ export const SUPPORTED_LANGUAGES = [
   },
   {
     code: 'zh',
-    label: 'Chinese',
+    label: 'Mandarin',
     locale: 'zh-CN',
-    sttCode: 'zh',
+    sttCode: 'zh-CN',
     ttsModel: 'aura-2-ling-zh',
-    tutorLabel: 'Chinese (Mandarin)',
+    tutorLabel: 'Mandarin Chinese',
+  },
+  {
+    code: 'hi',
+    label: 'Hindi',
+    locale: 'hi-IN',
+    sttCode: 'hi',
+    ttsModel: '',
+    tutorLabel: 'Hindi',
   },
 ]
 
@@ -124,11 +132,19 @@ export function isTrialActive(profile, now = new Date()) {
 }
 
 export function getDailyLimit(profile, now = new Date()) {
-  if (profile?.plan === 'starter') {
-    return 10
+  if (profile?.plan === 'pro') {
+    return 30
   }
-
+  if (profile?.plan === 'starter') {
+    return 15
+  }
+  // base plan: 2 min/day, 10 min/day during free trial week
   return isTrialActive(profile, now) ? 10 : 2
+}
+
+/** Whether this profile has offline Deepgram TTS access (Pro only) */
+export function hasOfflineDeepgram(profile) {
+  return profile?.plan === 'pro'
 }
 
 export function getMinutesRemaining(profile, now = new Date()) {

@@ -1,5 +1,10 @@
 export const APP_ROUTES = {
   home: '/',
+  howItWorks: '/how-it-works',
+  demo: '/demo',
+  languages: '/languages',
+  download: '/download',
+  docs: '/docs',
   login: '/login',
   signup: '/signup',
   onboarding: '/onboarding',
@@ -9,7 +14,6 @@ export const APP_ROUTES = {
   downloads: '/downloads',
   legacyHistory: '/history',
   settings: '/settings',
-  usageDashboard: '/ling-one',
 }
 
 const KNOWN_ROUTES = new Set(Object.values(APP_ROUTES))
@@ -21,7 +25,6 @@ const PROTECTED_ROUTES = new Set([
   APP_ROUTES.legacyHistory,
   APP_ROUTES.settings,
   APP_ROUTES.onboarding,
-  APP_ROUTES.usageDashboard,
 ])
 
 export function isProtectedRoute(pathname) {
