@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            arch: universal
+          - os: windows-latest
+            platform: win
+            arch: x64
+          - os: ubuntu-22.04
+            platform: linux
+            arch: x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        working-directory: speechcode
+        run: pnpm install --frozen-lockfile
+
+      - name: Build renderer
+        working-directory: speechcode/apps/desktop
+        run: pnpm build
+
+      - name: Package macOS (universal DMG)
+        if: matrix.platform == 'mac'
+        working-directory: speechcode/apps/desktop
+        run: pnpm package:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package Windows (NSIS)
+        if: matrix.platform == 'win'
+        working-directory: speechcode/apps/desktop
+        run: pnpm package:win
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package Linux (AppImage + deb)
+        if: matrix.platform == 'linux'
+        working-directory: speechcode/apps/desktop
+        run: pnpm exec electron-builder --linux AppImage deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            speechcode/apps/desktop/release/**/*.dmg
+            speechcode/apps/desktop/release/**/*.exe
+            speechcode/apps/desktop/release/**/*.AppImage
+            speechcode/apps/desktop/release/**/*.deb
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

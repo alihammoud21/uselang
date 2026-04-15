@@ -8,13 +8,19 @@ function resolveRoute(route: string): string {
   if (process.env.ELECTRON_RENDERER_URL) {
     return `${process.env.ELECTRON_RENDERER_URL}/#/${route}`;
   }
-
   return path.join(currentDirectory, "../../../../dist/renderer/index.html");
+}
+
+function resolveLauncher(): string {
+  if (process.env.ELECTRON_RENDERER_URL) {
+    return `${process.env.ELECTRON_RENDERER_URL}/launcher.html`;
+  }
+  return path.join(currentDirectory, "../../../../dist/renderer/launcher.html");
 }
 
 export class WindowManager {
   private mainWindow: BrowserWindow | null = null;
-  private overlayWindow: BrowserWindow | null = null;
+  private launcherWindow: BrowserWindow | null = null;
   private quitting = false;
 
   createMainWindow(showOnCreate = false): BrowserWindow {
@@ -23,14 +29,16 @@ export class WindowManager {
       height: 860,
       minWidth: 1100,
       minHeight: 760,
-      title: "SpeechCode",
+      title: "UseLang",
       show: showOnCreate,
-      backgroundColor: "#fafafa",
+      backgroundColor: "#FAF8F5",
+      titleBarStyle: "hiddenInset",
+      trafficLightPosition: { x: 16, y: 16 },
       webPreferences: {
         preload: path.join(currentDirectory, "../preload/index.js"),
         contextIsolation: true,
-        nodeIntegration: false
-      }
+        nodeIntegration: false,
+      },
     });
 
     this.mainWindow.on("close", (event) => {
@@ -40,14 +48,18 @@ export class WindowManager {
       }
     });
 
-    this.loadRoute(this.mainWindow, "dashboard");
+    this.loadRoute(this.mainWindow, "app");
     return this.mainWindow;
   }
 
-  createOverlayWindow(): BrowserWindow {
-    this.overlayWindow = new BrowserWindow({
-      width: 760,
-      height: 520,
+  createLauncherWindow(): BrowserWindow {
+    const { width: sw } = screen.getPrimaryDisplay().workAreaSize;
+
+    this.launcherWindow = new BrowserWindow({
+      width: 640,
+      height: 80,
+      x: Math.round((sw - 640) / 2),
+      y: 56,
       show: false,
       frame: false,
       transparent: true,
@@ -58,46 +70,56 @@ export class WindowManager {
       movable: true,
       skipTaskbar: true,
       hasShadow: true,
+      vibrancy: "under-window",
+      visualEffectState: "active",
       webPreferences: {
         preload: path.join(currentDirectory, "../preload/index.js"),
         contextIsolation: true,
-        nodeIntegration: false
-      }
+        nodeIntegration: false,
+      },
     });
 
-    this.overlayWindow.setAlwaysOnTop(true, "screen-saver");
-    this.overlayWindow.setVisibleOnAllWorkspaces(true, {
-      visibleOnFullScreen: true
+    this.launcherWindow.setAlwaysOnTop(true, "screen-saver");
+    this.launcherWindow.setVisibleOnAllWorkspaces(true, {
+      visibleOnFullScreen: true,
     });
 
-    this.overlayWindow.on("blur", () => {
-      this.overlayWindow?.hide();
+    this.launcherWindow.on("blur", () => {
+      this.launcherWindow?.hide();
     });
 
-    this.loadRoute(this.overlayWindow, "overlay");
-    return this.overlayWindow;
+    void this.launcherWindow.loadURL(resolveLauncher());
+    return this.launcherWindow;
   }
 
-  showOverlay(): void {
-    if (!this.overlayWindow || this.overlayWindow.isDestroyed()) {
-      this.createOverlayWindow();
+  showLauncher(): void {
+    if (!this.launcherWindow || this.launcherWindow.isDestroyed()) {
+      this.createLauncherWindow();
     }
-
-    const bounds = this.overlayWindow.getBounds();
+    const bounds = this.launcherWindow!.getBounds();
     const display = screen.getPrimaryDisplay().workArea;
     const x = Math.round(display.x + (display.width - bounds.width) / 2);
-    this.overlayWindow.setPosition(
-      Math.max(32, x),
-      56
-    );
-    this.overlayWindow.show();
-    this.overlayWindow.focus();
-    this.overlayWindow.webContents.send("overlay:activated");
+    this.launcherWindow!.setPosition(Math.max(32, x), 56);
+    this.launcherWindow!.show();
+    this.launcherWindow!.focus();
+    this.launcherWindow!.webContents.send("launcher:activated");
   }
 
-  hideOverlay(): void {
-    if (this.overlayWindow && !this.overlayWindow.isDestroyed()) {
-      this.overlayWindow.hide();
+  hideLauncher(): void {
+    if (this.launcherWindow && !this.launcherWindow.isDestroyed()) {
+      this.launcherWindow.hide();
+    }
+  }
+
+  expandLauncher(): void {
+    if (this.launcherWindow && !this.launcherWindow.isDestroyed()) {
+      this.launcherWindow.setSize(640, 480, true);
+    }
+  }
+
+  collapseLauncher(): void {
+    if (this.launcherWindow && !this.launcherWindow.isDestroyed()) {
+      this.launcherWindow.setSize(640, 80, true);
     }
   }
 
@@ -106,7 +128,6 @@ export class WindowManager {
       this.createMainWindow(true);
       return;
     }
-
     this.mainWindow.show();
     this.mainWindow.focus();
   }
@@ -124,9 +145,8 @@ export class WindowManager {
     if (this.mainWindow && !this.mainWindow.isDestroyed()) {
       this.mainWindow.webContents.send(channel, payload);
     }
-
-    if (this.overlayWindow && !this.overlayWindow.isDestroyed()) {
-      this.overlayWindow.webContents.send(channel, payload);
+    if (this.launcherWindow && !this.launcherWindow.isDestroyed()) {
+      this.launcherWindow.webContents.send(channel, payload);
     }
   }
 
@@ -135,7 +155,6 @@ export class WindowManager {
       void window.loadURL(resolveRoute(route));
       return;
     }
-
     void window.loadFile(resolveRoute(route), { hash: `/${route}` });
   }
 }

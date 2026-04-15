@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install speechcode deps
+        working-directory: speechcode
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck desktop
+        working-directory: speechcode/apps/desktop
+        run: pnpm exec tsc --noEmit
+
+  lint-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install lang deps
+        working-directory: lang
+        run: npm ci
+
+      - name: Lint
+        working-directory: lang
+        run: npm run lint

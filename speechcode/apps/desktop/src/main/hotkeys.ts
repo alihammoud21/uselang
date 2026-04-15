@@ -1,22 +1,29 @@
 import { globalShortcut } from "electron";
 
 export class HotkeyManager {
-  private accelerator = "";
+  private currentShortcut: string | null = null;
+  private readonly callback: () => void;
 
-  constructor(private readonly onTrigger: () => void) {}
+  constructor(callback: () => void) {
+    this.callback = callback;
+  }
 
-  register(accelerator: string): boolean {
-    if (this.accelerator) {
-      globalShortcut.unregister(this.accelerator);
+  register(shortcut: string): void {
+    if (this.currentShortcut) {
+      globalShortcut.unregister(this.currentShortcut);
     }
-
-    this.accelerator = accelerator;
-    return globalShortcut.register(accelerator, this.onTrigger);
+    const registered = globalShortcut.register(shortcut, this.callback);
+    if (registered) {
+      this.currentShortcut = shortcut;
+    } else {
+      // Fallback to default if custom shortcut is taken
+      const fallback = "CommandOrControl+Shift+Space";
+      globalShortcut.register(fallback, this.callback);
+      this.currentShortcut = fallback;
+    }
   }
 
   dispose(): void {
-    if (this.accelerator) {
-      globalShortcut.unregister(this.accelerator);
-    }
+    globalShortcut.unregisterAll();
   }
 }

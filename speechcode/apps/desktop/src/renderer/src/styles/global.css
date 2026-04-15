@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+:root {
+  --surface-base: #FAF8F5;
+  --surface-card: #F3EFE8;
+  --surface-raised: #EDE8DF;
+  --surface-border: #E2DAD0;
+  --gold-50: #FDF8EE;
+  --gold-100: #F9EDCC;
+  --gold-200: #F2D98A;
+  --gold-300: #E8C14A;
+  --gold-400: #D4A820;
+  --gold-500: #B88A0A;
+  --ink-primary: #1C1917;
+  --ink-secondary: #57534E;
+  --ink-muted: #A8A29E;
+  --ink-ghost: #D6D3D1;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--surface-base);
+  color: var(--ink-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--ink-ghost); }
+
+/* Selection */
+::selection { background: rgba(232,193,74,0.25); }
+
+/* Drag region for frameless window */
+.drag-region { -webkit-app-region: drag; }
+.no-drag { -webkit-app-region: no-drag; }

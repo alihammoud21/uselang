@@ -9,7 +9,7 @@ const controller = new SpeechCodeController();
 const windows = new WindowManager();
 const tray = new TrayManager();
 const hotkeys = new HotkeyManager(() => {
-  windows.showOverlay();
+  windows.showLauncher();
 });
 
 async function bootstrap(): Promise<void> {
@@ -21,7 +21,7 @@ async function bootstrap(): Promise<void> {
   });
 
   const settings = await controller.getSettings();
-  hotkeys.register(settings.hotkey);
+  hotkeys.register(settings.hotkey ?? "CommandOrControl+Shift+Space");
 
   controller.on("settings:changed", (nextSettings: { hotkey: string }) => {
     hotkeys.register(nextSettings.hotkey);
@@ -29,16 +29,16 @@ async function bootstrap(): Promise<void> {
 
   const shouldShowMainWindow = !settings.onboardingComplete;
   windows.createMainWindow(shouldShowMainWindow);
-  windows.createOverlayWindow();
+  windows.createLauncherWindow();
 
   tray.init({
-    onOpenOverlay: () => windows.showOverlay(),
-    onOpenDashboard: () => windows.showMainWindow(),
+    onOpenLauncher: () => windows.showLauncher(),
+    onOpenMain: () => windows.showMainWindow(),
     onOpenSettings: () => windows.openSettings(),
     onQuit: () => {
       windows.markQuitting();
       app.quit();
-    }
+    },
   });
 }
 
@@ -50,12 +50,12 @@ app.whenReady().then(async () => {
   await bootstrap();
 
   app.on("activate", () => {
-    windows.showOverlay();
+    windows.showLauncher();
   });
 });
 
 app.on("window-all-closed", () => {
-  // Keep the background utility alive for tray and hotkey access.
+  // Keep alive for tray and hotkey access.
 });
 
 app.on("will-quit", () => {

@@ -1,19 +1,12 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Menu, Tray, nativeImage } from "electron";
 
-function createTrayIcon() {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
-      <rect x="2" y="2" width="14" height="14" rx="5" fill="#111111"/>
-      <circle cx="9" cy="9" r="3" fill="#f5f5f5"/>
-    </svg>
-  `;
+const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 
-  return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`);
-}
-
-interface TrayManagerOptions {
-  onOpenOverlay: () => void;
-  onOpenDashboard: () => void;
+interface TrayOptions {
+  onOpenLauncher: () => void;
+  onOpenMain: () => void;
   onOpenSettings: () => void;
   onQuit: () => void;
 }
@@ -21,33 +14,40 @@ interface TrayManagerOptions {
 export class TrayManager {
   private tray: Tray | null = null;
 
-  init(options: TrayManagerOptions): void {
-    this.tray = new Tray(createTrayIcon());
-    this.tray.setToolTip("SpeechCode");
-    this.tray.on("click", options.onOpenOverlay);
-    this.tray.setContextMenu(
-      Menu.buildFromTemplate([
-        {
-          label: "Speak now",
-          click: options.onOpenOverlay
-        },
-        {
-          label: "Open dashboard",
-          click: options.onOpenDashboard
-        },
-        {
-          label: "Open settings",
-          click: options.onOpenSettings
-        },
-        {
-          type: "separator"
-        },
-        {
-          label: "Quit SpeechCode",
-          click: options.onQuit
-        }
-      ])
+  init(options: TrayOptions): void {
+    // Use a template image (macOS) or fallback PNG
+    const iconPath = path.join(
+      currentDirectory,
+      "../../../../resources/tray-icon.png"
     );
+    const icon = nativeImage.createFromPath(iconPath);
+    this.tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+    this.tray.setToolTip("UseLang");
+
+    const menu = Menu.buildFromTemplate([
+      {
+        label: "Open UseLang",
+        click: options.onOpenMain,
+      },
+      {
+        label: "Quick Phrase\u2026",
+        accelerator: "CommandOrControl+Shift+Space",
+        click: options.onOpenLauncher,
+      },
+      { type: "separator" },
+      {
+        label: "Settings",
+        click: options.onOpenSettings,
+      },
+      { type: "separator" },
+      {
+        label: "Quit UseLang",
+        click: options.onQuit,
+      },
+    ]);
+
+    this.tray.setContextMenu(menu);
+    this.tray.on("click", options.onOpenLauncher);
   }
 
   destroy(): void {

@@ -1,40 +1,36 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { SaveSettingsInput, SessionSubmission, SpeechCodeApi, SpeechMode } from "@speechcode/types";
 
-const api: SpeechCodeApi = {
+contextBridge.exposeInMainWorld("electronAPI", {
+  // Settings
   getSettings: () => ipcRenderer.invoke("settings:get"),
-  saveSettings: (settings: SaveSettingsInput) => ipcRenderer.invoke("settings:save", settings),
+  saveSettings: (s: unknown) => ipcRenderer.invoke("settings:save", s),
+
+  // Dashboard
   getDashboard: () => ipcRenderer.invoke("dashboard:get"),
-  preparePrompt: (rawInput: string, mode: SpeechMode) =>
-    ipcRenderer.invoke("prompt:prepare", rawInput, mode),
-  startSession: (input: SessionSubmission) => ipcRenderer.invoke("session:start", input),
-  hideOverlay: () => ipcRenderer.invoke("overlay:hide"),
-  openOverlay: () => ipcRenderer.invoke("overlay:show"),
-  openDashboard: () => ipcRenderer.invoke("dashboard:show"),
-  onOverlayActivated: (listener) => {
-    const wrapped = () => listener();
-    ipcRenderer.on("overlay:activated", wrapped);
-    return () => {
-      ipcRenderer.removeListener("overlay:activated", wrapped);
-    };
-  },
-  onSettingsRequested: (listener) => {
-    const wrapped = () => listener();
-    ipcRenderer.on("settings:open", wrapped);
-    return () => {
-      ipcRenderer.removeListener("settings:open", wrapped);
-    };
-  },
-  onDashboardChanged: (listener) => {
-    const wrapped = (_event: unknown, dashboard: Parameters<typeof listener>[0]) => {
-      listener(dashboard);
-    };
+  onDashboardChanged: (cb: (data: unknown) => void) =>
+    ipcRenderer.on("dashboard:changed", (_e, data) => cb(data)),
 
-    ipcRenderer.on("dashboard:changed", wrapped);
-    return () => {
-      ipcRenderer.removeListener("dashboard:changed", wrapped);
-    };
-  }
-};
+  // Session
+  startSession: (input: unknown) => ipcRenderer.invoke("session:start", input),
+  preparePrompt: (raw: string, mode: string) =>
+    ipcRenderer.invoke("prompt:prepare", raw, mode),
 
-contextBridge.exposeInMainWorld("speechcode", api);
+  // Launcher
+  hideLauncher: () => ipcRenderer.send("launcher:hide"),
+  expandLauncher: () => ipcRenderer.send("launcher:expand"),
+  collapseLauncher: () => ipcRenderer.send("launcher:collapse"),
+  openMain: () => ipcRenderer.send("launcher:open-main"),
+  onLauncherActivated: (cb: () => void) =>
+    ipcRenderer.on("launcher:activated", cb),
+
+  // Clipboard
+  startClipboardWatch: () => ipcRenderer.send("clipboard:watch:start"),
+  stopClipboardWatch: () => ipcRenderer.send("clipboard:watch:stop"),
+  readClipboard: () => ipcRenderer.invoke("clipboard:read"),
+  onClipboardChanged: (cb: (text: string) => void) =>
+    ipcRenderer.on("clipboard:changed", (_e, text) => cb(text)),
+
+  // Platform
+  platform: process.platform,
+  isDesktop: true,
+});
