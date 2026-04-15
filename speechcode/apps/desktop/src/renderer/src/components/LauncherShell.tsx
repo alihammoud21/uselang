@@ -28,6 +28,8 @@ declare global {
       collapseLauncher: () => void;
       openMain: () => void;
       onLauncherActivated: (cb: () => void) => void;
+      preparePrompt: (raw: string, mode: string) => Promise<unknown>;
+      startSession: (input: unknown) => Promise<unknown>;
     };
   }
 }
@@ -37,6 +39,7 @@ export function LauncherShell() {
   const [input, setInput] = useState("");
   const [result, setResult] = useState<LauncherResult | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -45,6 +48,7 @@ export function LauncherShell() {
     window.electronAPI?.onLauncherActivated(() => {
       setInput("");
       setResult(null);
+      setError(null);
       setExpanded(false);
       window.electronAPI?.collapseLauncher();
       setTimeout(() => inputRef.current?.focus(), 60);
@@ -66,7 +70,7 @@ export function LauncherShell() {
       return;
     }
     if (e.key === "Enter" && input.trim()) {
-      handleSubmit();
+      void handleSubmit();
     }
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       window.electronAPI?.openMain();
@@ -76,18 +80,39 @@ export function LauncherShell() {
   async function handleSubmit() {
     if (!input.trim()) return;
     setLoading(true);
+    setError(null);
     if (!expanded) {
       setExpanded(true);
       window.electronAPI?.expandLauncher();
     }
-    // Simulate API call — replace with real translation/AI call
-    await new Promise((r) => setTimeout(r, 700));
-    setResult({
-      targetPhrase: input, // placeholder — real API replaces this
-      phonetics: "[phonetics appear here]",
-      explanation: "Explanation of the phrase will appear here.",
-    });
-    setLoading(false);
+    try {
+      // Step 1: prepare / clean the prompt
+      const prepared = (await window.electronAPI?.preparePrompt(
+        input.trim(),
+        mode === "speak" ? "casual" : "writing"
+      )) as { cleanedPrompt: string; actionLabel: string } | undefined;
+
+      const cleanedPrompt = prepared?.cleanedPrompt ?? input.trim();
+
+      // Step 2: fire the session (inserts into target editor)
+      const sessionResult = (await window.electronAPI?.startSession({
+        rawInput: input.trim(),
+        cleanedPrompt,
+        mode: mode === "speak" ? "casual" : "writing",
+      })) as { session: { cleanedPrompt: string } } | undefined;
+
+      setResult({
+        targetPhrase: sessionResult?.session?.cleanedPrompt ?? cleanedPrompt,
+        phonetics: "[phonetics appear after AI processing]",
+        explanation:
+          "Phrase prepared and inserted into your target editor. Open the app for full pronunciation coaching.",
+      });
+    } catch (err) {
+      setError((err as Error).message ?? "Something went wrong");
+      setResult(null);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -225,6 +250,19 @@ export function LauncherShell() {
               />
               Thinking...
             </div>
+          ) : error ? (
+            <div
+              style={{
+                padding: "12px 16px",
+                borderRadius: 8,
+                background: "rgba(220,38,38,0.08)",
+                border: "1px solid rgba(220,38,38,0.2)",
+                color: "#B91C1C",
+                fontSize: 13,
+              }}
+            >
+              {error}
+            </div>
           ) : result ? (
             <>
               <div>
@@ -255,6 +293,7 @@ export function LauncherShell() {
               </p>
               <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                 <button
+                  onClick={() => window.electronAPI?.openMain()}
                   style={{
                     padding: "8px 16px",
                     borderRadius: 8,
@@ -270,6 +309,7 @@ export function LauncherShell() {
                   Practice
                 </button>
                 <button
+                  onClick={() => window.electronAPI?.hideLauncher()}
                   style={{
                     padding: "8px 16px",
                     borderRadius: 8,
@@ -281,7 +321,7 @@ export function LauncherShell() {
                     cursor: "pointer",
                   }}
                 >
-                  Save phrase
+                  Dismiss
                 </button>
                 <button
                   onClick={() => window.electronAPI?.openMain()}

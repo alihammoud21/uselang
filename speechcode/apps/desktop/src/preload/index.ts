@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   // Settings
   getSettings: () => ipcRenderer.invoke("settings:get"),
   saveSettings: (s: unknown) => ipcRenderer.invoke("settings:save", s),
+  onSettingsOpen: (cb: () => void) =>
+    ipcRenderer.on("settings:open", cb),
 
   // Dashboard
   getDashboard: () => ipcRenderer.invoke("dashboard:get"),
@@ -29,6 +31,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readClipboard: () => ipcRenderer.invoke("clipboard:read"),
   onClipboardChanged: (cb: (text: string) => void) =>
     ipcRenderer.on("clipboard:changed", (_e, text) => cb(text)),
+
+  // Window controls
+  minimizeWindow: () => ipcRenderer.send("window:minimize"),
 
   // Platform
   platform: process.platform,
