@@ -25,6 +25,7 @@ import { goalLabelFor } from "@/lib/goals";
 import { getProgressSummary, getLevel, type ProgressSummary } from "@/lib/progress-store";
 import { scheduleDailyNotification, cancelDailyNotification, getDailyNotificationHour } from "@/lib/daily-notifications";
 import { THEME_IDS, THEMES, getSavedTheme, setSavedTheme, type ThemeId } from "@/lib/theme-store";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const T = {
@@ -140,6 +141,31 @@ export default function SettingsScreen() {
         { text: "Cancel", style: "cancel" },
         { text: "Reset", style: "destructive", onPress: () => clearUserProfile() },
       ]
+    );
+  }, []);
+
+  const handleResetAllData = useCallback(() => {
+    Alert.alert(
+      "Reset All App Data?",
+      "This will permanently wipe your XP, streak, coins, shop items, lesson progress, and saved phrases. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Reset Everything",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const allKeys = await AsyncStorage.getAllKeys();
+              const langKeys = allKeys.filter((k) => k.startsWith("lang:") || k.startsWith("uselang:"));
+              await AsyncStorage.multiRemove(langKeys);
+              await clearUserProfile();
+              Alert.alert("Done", "All data has been cleared. Please restart the app.", [{ text: "OK" }]);
+            } catch (e) {
+              Alert.alert("Error", "Could not clear all data. Try again.", [{ text: "OK" }]);
+            }
+          },
+        },
+      ],
     );
   }, []);
 
@@ -346,12 +372,18 @@ export default function SettingsScreen() {
         </View>
 
         {/* ── Danger zone ───────────────────────────────────────────── */}
-        <View style={{ marginTop: 24 }}>
+        <View style={{ marginTop: 24, alignItems: "center", gap: 4 }}>
           <Pressable
             onPress={handleResetOnboarding}
             style={({ pressed }) => [S.resetBtn, pressed && { opacity: 0.7 }]}
           >
             <Text style={S.resetBtnText}>Reset personalization</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleResetAllData}
+            style={({ pressed }) => [S.resetBtn, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={[S.resetBtnText, { fontWeight: "700", color: "#A93226" }]}>Reset all app data</Text>
           </Pressable>
         </View>
 

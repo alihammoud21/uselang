@@ -170,10 +170,17 @@ export async function loadGemmaModel(): Promise<boolean> {
     return true;
   }
 
-  // Don't auto-download the model during an implicit load. Activate stub.
-  console.log("[gemma] Model not downloaded yet. Activating stub.");
-  console.log("[gemma] Use downloadAndLoadModel() to trigger download + GPU load.");
-  activateStub("Model not downloaded. Tap 'Download Model' for GPU-powered AI.");
+  // Native module available but model not downloaded yet.
+  // Activate stub immediately so the current call isn't blocked,
+  // then kick off the real model download in the background.
+  console.log("[gemma] Model not downloaded yet. Activating stub + starting background download…");
+  activateStub("Downloading AI model in background…");
+  // Fire-and-forget: downloadAndLoadModel will upgrade from stub → real once done
+  downloadAndLoadModel().then((ok) => {
+    console.log(`[gemma] Background download finished: ${ok ? "SUCCESS" : "stayed on stub"}`);
+  }).catch((e) => {
+    console.warn("[gemma] Background download error:", e);
+  });
   return true;
 }
 

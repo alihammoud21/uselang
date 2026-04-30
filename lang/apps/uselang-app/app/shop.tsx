@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getCoinBalance, spendCoins, addCoins } from "@/lib/challenge-store";
 import { getProgressSummary, getLevel } from "@/lib/progress-store";
 import {
@@ -175,12 +176,17 @@ export default function ShopScreen() {
           await purchaseItem(item.id);
         }
       }
+      await Promise.all([
+        AsyncStorage.setItem("lang:examUnlock:zh", "1"),
+        AsyncStorage.setItem("lang:examUnlock:es", "1"),
+        AsyncStorage.setItem("lang:examUnlock:fr", "1"),
+      ]);
     }
     await load();
     setRedeemCode("");
     Alert.alert(
-      `${entry.label} Redeemed! 🎉`,
-      `+🪙 ${entry.coins.toLocaleString()}${entry.unlockAll ? "\nAll shop items unlocked!" : ""}`
+      `${entry.label} Redeemed!`,
+      `+${entry.coins.toLocaleString()} coins${entry.unlockAll ? "\nAll shop items + final exams unlocked!" : ""}`
     );
   }, [redeemCode, owned, load]);
 

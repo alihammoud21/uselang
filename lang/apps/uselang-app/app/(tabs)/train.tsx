@@ -9,6 +9,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   Share,
+  Alert,
+  Linking,
+  Keyboard,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -76,11 +79,12 @@ import { chatWithGemma } from "@/lib/gemma-engine";
 import { playSound } from "@/lib/sound-manager";
 import { VoiceSpeedControls, type VoiceRate } from "@/components/VoiceSpeedControls";
 import { startRecording, transcribeAudio, type RecorderHandle } from "@/lib/stt-client";
-import { recognizeSpeechOnce, type NativeSpeechSession } from "@/lib/native-speech";
+import { recognizeSpeechOnce, SpeechPermissionError, type NativeSpeechSession } from "@/lib/native-speech";
 import { useOnlineStatus } from "@/lib/use-online";
 import { getUserProfile, type UserProfile } from "@/lib/user-store";
-import { recordAttempt, addWeakSound } from "@/lib/progress-store";
+import { recordAttempt, addWeakSound, addXP } from "@/lib/progress-store";
 import { savePhrase } from "@/lib/phrase-store";
+import { addCoins } from "@/lib/challenge-store";
 import { useLocalSearchParams, useFocusEffect, useRouter } from "expo-router";
 import { getTodayTwister, recordDrillAttempt } from "@/lib/daily-challenge";
 import { addTutorSeconds } from "@/lib/usage-store";
@@ -379,10 +383,12 @@ function CompletionOverlay({
   phraseSession,
   language,
   onDismiss,
+  xpEarned,
 }: {
   phraseSession: PhraseSession;
   language: { code: string; label: string };
   onDismiss: () => void;
+  xpEarned: number;
 }) {
   const particles = useMemo(() => {
     return Array.from({ length: 24 }, (_, i) => ({
@@ -469,6 +475,18 @@ function CompletionOverlay({
           <Text style={{ fontFamily: "Geist-Regular", fontSize: 13, color: "rgba(28,23,20,0.45)", marginBottom: 16 }}>
             Full sentence score: {Math.round(phraseSession.finalScore * 100)}%
           </Text>
+        )}
+        {xpEarned > 0 && (
+          <View style={{
+            flexDirection: "row", alignItems: "center", gap: 8,
+            backgroundColor: "#FFF8EC", borderWidth: 1, borderColor: "rgba(168,93,46,0.18)",
+            borderRadius: 14, paddingHorizontal: 18, paddingVertical: 10,
+            marginBottom: 16,
+          }}>
+            <Ionicons name="flash" size={18} color="#A85D2E" />
+            <Text style={{ fontFamily: "Geist-Bold", fontSize: 20, color: "#A85D2E", letterSpacing: -0.3 }}>+{xpEarned}</Text>
+            <Text style={{ fontFamily: "Geist-Regular", fontSize: 12, color: "#8A7060" }}>XP earned</Text>
+          </View>
         )}
         <Pressable
           onPress={onDismiss}
@@ -744,6 +762,7 @@ export default function TrainScreen() {
   const [introFocusTick, setIntroFocusTick] = useState(0);
   const [voiceRate, setVoiceRate] = useState<VoiceRate>(1.0);
   const [quickReady, setQuickReady] = useState(true); // always ready — speech stays on-device
+  const [isTypingFocused, setIsTypingFocused] = useState(false);
   // Mirror the UI-level rate into the audio module every time it changes so
   // subsequent calls to playTutorAudio / speakOffline inherit it.
   useEffect(() => { setTutorPlaybackRate(voiceRate); }, [voiceRate]);
@@ -776,6 +795,7 @@ export default function TrainScreen() {
   const [scenarioFeedback, setScenarioFeedback] = useState<PronunciationFeedback | null>(null);
   const [phraseCoachingSpeaking, setPhraseCoachingSpeaking] = useState(false);
   const [skillUnlockVisible, setSkillUnlockVisible] = useState(false);
+  const [phraseXpEarned, setPhraseXpEarned] = useState(0);
 
   useEffect(() => {
     getUserProfile().then((p) => {
@@ -1106,16 +1126,16 @@ export default function TrainScreen() {
       setLastUserText(text);
       await runTutor(text);
     } catch (err: any) {
-      // Kill the conversation loop on hard failure so the mic doesn't
-      // auto-restart behind an alert.
       conversationActiveRef.current = false;
       setConversationActive(false);
       setAiState("idle");
-      // Inline placeholder — no popup. The user can tap to try again.
-      if (err?.status === 401) {
-        setLastUserText("Sign-in required for transcription.");
-      } else if (err?.missingKeys?.length) {
-        setLastUserText(`STT missing keys: ${err.missingKeys.join(", ")}`);
+      if (err instanceof SpeechPermissionError && err.canOpenSettings) {
+        Alert.alert("Microphone Access", "UseLang needs microphone access to practice speaking.", [
+          { text: "Open Settings", onPress: () => Linking.openSettings() },
+          { text: "Cancel", style: "cancel" },
+        ]);
+      } else if (err?.status === 401) {
+        Alert.alert("Sign In Required", "Please sign in to use transcription.", [{ text: "OK" }]);
       } else {
         setLastUserText(err?.message || "Couldn't transcribe — try again.");
       }
@@ -1159,9 +1179,24 @@ export default function TrainScreen() {
         }, VAD_SILENCE_MS);
       });
     } catch (err: any) {
-      // Inline only — no popup. The user can read this once in the prompt.
-      setLastUserText(err?.message || "Microphone unavailable. Check permissions.");
       setConversationActive(false);
+      if (err instanceof SpeechPermissionError && err.canOpenSettings) {
+        Alert.alert(
+          "Microphone Access",
+          "UseLang needs microphone access to practice speaking. Please allow it in Settings.",
+          [
+            { text: "Open Settings", onPress: () => Linking.openSettings() },
+            { text: "Cancel", style: "cancel" },
+          ],
+        );
+      } else if (err instanceof SpeechPermissionError) {
+        Alert.alert("Microphone Access", err.message, [{ text: "OK" }]);
+      } else {
+        Alert.alert("Speech Error", err?.message || "Microphone unavailable. Please try again.", [
+          { text: "Try Again", onPress: () => beginNativeListening() },
+          { text: "Cancel", style: "cancel" },
+        ]);
+      }
     }
   }, [clearVadTimer, finishListeningAndTranscribe]);
 
@@ -1242,7 +1277,14 @@ export default function TrainScreen() {
     } catch (err: any) {
       console.error("[stt-route] finishDeepgramTranscribe FAILED:", err?.message);
       setAiState("idle");
-      setLastUserText(err?.message || "Couldn't transcribe — try again.");
+      if (err instanceof SpeechPermissionError && err.canOpenSettings) {
+        Alert.alert("Microphone Access", "UseLang needs microphone access to practice speaking.", [
+          { text: "Open Settings", onPress: () => Linking.openSettings() },
+          { text: "Cancel", style: "cancel" },
+        ]);
+      } else {
+        setLastUserText(err?.message || "Couldn't transcribe — try again.");
+      }
     }
   }, [mode, language.code, nativeCode, runTutor, clearVadTimer]);
 
@@ -1421,13 +1463,16 @@ export default function TrainScreen() {
     return () => clearTimeout(id);
   }, [aiState, beginNativeListening, micMuted, normalizedMode]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount — stop ALL audio/speech so session doesn't keep talking
   useEffect(() => {
     return () => {
+      conversationActiveRef.current = false;
       clearVadTimer();
       meteringUnsub.current?.();
       nativeSpeechRef.current?.abort();
       recorderRef.current?.cancel().catch(() => {});
+      stopTutorAudio().catch(() => {});
+      stopRoutedTts().catch(() => {});
     };
   }, [clearVadTimer]);
 
@@ -1542,7 +1587,7 @@ export default function TrainScreen() {
         
       },
       {
-        rate: 0.75,
+        rate: 1.0,
         onStart: () => setAiState("speaking"),
         onEnd: () => setAiState("idle"),
         onError: () => setAiState("idle"),
@@ -1794,139 +1839,164 @@ export default function TrainScreen() {
           />
         </View>
 
-        {/* ── FIXED layout — no scroll ── */}
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
-          <View style={{ flex: 1, paddingHorizontal: 22 }}>
+        {/* ── FIXED layout — main content never moves when keyboard opens ── */}
+        <View style={{ flex: 1, paddingHorizontal: 22 }}>
 
-            {/* Headline block */}
-            <View style={{ paddingTop: 8 }}>
-              <Text style={{
-                fontSize: 26, lineHeight: 32,
-                fontFamily: "Geist-Bold", fontWeight: "800",
-                color: "#1C1714", letterSpacing: -0.9,
-              }}>
-                {"What do you want to\nlearn to say "}
-                <Text style={{ fontFamily: "Fraunces-Italic", fontWeight: "700", fontSize: 26 }}>today</Text>
-                {"?"}
-              </Text>
-              <Text style={{
-                marginTop: 4, fontSize: 13, lineHeight: 18,
-                fontFamily: "Geist-Regular", color: "rgba(28,23,20,0.55)",
-              }}>
-                Tap a prompt, type below, or hold the orb to speak.
-              </Text>
-            </View>
+          {/* Headline block */}
+          <View style={{ paddingTop: 8 }}>
+            <Text style={{
+              fontSize: 26, lineHeight: 32,
+              fontFamily: "Geist-Bold", fontWeight: "800",
+              color: "#1C1714", letterSpacing: -0.9,
+            }}>
+              {"What do you want to\nlearn to say "}
+              <Text style={{ fontFamily: "Fraunces-Italic", fontWeight: "700", fontSize: 26 }}>today</Text>
+              {"?"}
+            </Text>
+            <Text style={{
+              marginTop: 4, fontSize: 13, lineHeight: 18,
+              fontFamily: "Geist-Regular", color: "rgba(28,23,20,0.55)",
+            }}>
+              Tap a prompt, type below, or hold the orb to speak.
+            </Text>
+          </View>
 
-            {/* Spacer 1 — small, keeps headline close to top */}
-            <View style={{ flex: 0.2 }} />
+          {/* Spacer */}
+          <View style={{ flex: 0.2 }} />
 
-            {/* Suggestion cards */}
-            <View style={{ gap: 8 }}>
-              {QUICK_PROMPTS.map((p) => (
-                <Pressable
-                  key={p.text}
-                  onPress={() => goToQuickSession(p.text)}
-                  style={({ pressed }) => ({
-                    opacity: pressed ? 0.80 : 1,
-                    transform: [{ scale: pressed ? 0.984 : 1 }],
-                  })}
-                >
-                  <View style={{
-                    flexDirection: "row", alignItems: "center",
-                    backgroundColor: "#FFFFFF", borderRadius: 99,
-                    paddingHorizontal: 18, paddingVertical: 11,
-                    shadowColor: "rgba(60,40,20,1)",
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.06, shadowRadius: 14, elevation: 2,
-                    borderWidth: 0.5, borderColor: "rgba(28,23,20,0.05)",
-                    gap: 12,
+          {/* Suggestion cards */}
+          <View style={{ gap: 8 }}>
+            {QUICK_PROMPTS.map((p) => (
+              <Pressable
+                key={p.text}
+                onPress={() => goToQuickSession(p.text)}
+                style={({ pressed }) => ({
+                  opacity: pressed ? 0.80 : 1,
+                  transform: [{ scale: pressed ? 0.984 : 1 }],
+                })}
+              >
+                <View style={{
+                  flexDirection: "row", alignItems: "center",
+                  backgroundColor: "#FFFFFF", borderRadius: 99,
+                  paddingHorizontal: 18, paddingVertical: 11,
+                  shadowColor: "rgba(60,40,20,1)",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.06, shadowRadius: 14, elevation: 2,
+                  borderWidth: 0.5, borderColor: "rgba(28,23,20,0.05)",
+                  gap: 12,
+                }}>
+                  <Text style={{ fontSize: 18 }}>{p.emoji}</Text>
+                  <Text style={{
+                    fontFamily: "Geist-Bold", fontSize: 15,
+                    color: "#1C1714", flex: 1, letterSpacing: -0.2,
                   }}>
-                    <Text style={{ fontSize: 18 }}>{p.emoji}</Text>
-                    <Text style={{
-                      fontFamily: "Geist-Bold", fontSize: 15,
-                      color: "#1C1714", flex: 1, letterSpacing: -0.2,
-                    }}>
-                      {p.text}
-                    </Text>
-                  </View>
-                </Pressable>
-              ))}
-            </View>
+                    {p.text}
+                  </Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
 
-            {/* Orb — fills remaining space and centers itself */}
-            <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-              <SphereOrb
-                state={aiState === "blocked" ? "idle" : aiState}
-                tone="blue"
-                micLevel={micLevel}
-                size={ENTRY_ORB_SIZE}
-                onTap={handleMicTap}
-                onLongPress={handleMicTap}
+          {/* Orb — fills remaining space, centered. No "Tap to speak" label. */}
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingBottom: 80 }}>
+            <SphereOrb
+              state={aiState === "blocked" ? "idle" : aiState}
+              tone="blue"
+              micLevel={micLevel}
+              size={ENTRY_ORB_SIZE}
+              onTap={handleMicTap}
+              onLongPress={handleMicTap}
+            />
+          </View>
+
+        </View>
+
+        {/* ── Input pill — absolutely pinned at bottom, rises with keyboard ── */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={TAB_CLEARANCE}
+          style={{ position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 60 }}
+        >
+          <View style={{ paddingHorizontal: 22, paddingBottom: TAB_CLEARANCE }}>
+            <View style={{
+              flexDirection: "row", alignItems: "center",
+              backgroundColor: "rgba(255,255,255,0.97)",
+              borderRadius: 99,
+              paddingLeft: 16, paddingRight: 7, paddingVertical: 5,
+              shadowColor: "rgba(60,40,20,1)",
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.10, shadowRadius: 20, elevation: 5,
+              borderWidth: 0.5, borderColor: "rgba(28,23,20,0.06)",
+              gap: 10,
+            }}>
+              <Ionicons name="volume-medium-outline" size={16} color="rgba(28,23,20,0.45)" />
+              <TextInput
+                style={{
+                  flex: 1, fontSize: 14,
+                  fontFamily: "Geist-Medium", fontWeight: "500",
+                  color: "#1C1714", paddingVertical: 6,
+                }}
+                placeholder={`Type in ${language.label}…`}
+                placeholderTextColor="rgba(28,23,20,0.40)"
+                value={typedInput}
+                onChangeText={setTypedInput}
+                onFocus={() => setIsTypingFocused(true)}
+                onBlur={() => setIsTypingFocused(false)}
+                onSubmitEditing={() => { setIsTypingFocused(false); goToQuickSession(typedInput); }}
+                returnKeyType="send"
+                blurOnSubmit={false}
+                editable={aiState === "idle"}
+                maxLength={600}
               />
-              <Text style={{
-                marginTop: 6, fontSize: 14,
-                fontFamily: "Geist-Bold", color: "#1C1714", letterSpacing: -0.2,
-              }}>
-                {aiState === "listening" ? "Listening…" : "Tap to speak"}
-              </Text>
-              <Text style={{
-                marginTop: 2, fontSize: 11,
-                fontFamily: "Geist-Regular", color: "rgba(28,23,20,0.50)",
-              }}>
-                or type below
-              </Text>
-            </View>
-
-            {/* Input pill — must sit above the floating tab bar */}
-            <View style={{ paddingBottom: TAB_CLEARANCE }}>
-              <View style={{
-                flexDirection: "row", alignItems: "center",
-                backgroundColor: "rgba(255,255,255,0.92)",
-                borderRadius: 99,
-                paddingLeft: 16, paddingRight: 7, paddingVertical: 5,
-                shadowColor: "rgba(60,40,20,1)",
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.10, shadowRadius: 20, elevation: 5,
-                borderWidth: 0.5, borderColor: "rgba(28,23,20,0.06)",
-                gap: 10,
-              }}>
-                <Ionicons name="volume-medium-outline" size={16} color="rgba(28,23,20,0.45)" />
-                <TextInput
-                  style={{
-                    flex: 1, fontSize: 14,
-                    fontFamily: "Geist-Medium", fontWeight: "500",
-                    color: "#1C1714", paddingVertical: 6,
-                  }}
-                  placeholder={`Type in ${language.label}…`}
-                  placeholderTextColor="rgba(28,23,20,0.40)"
-                  value={typedInput}
-                  onChangeText={setTypedInput}
-                  onSubmitEditing={() => goToQuickSession(typedInput)}
-                  returnKeyType="send"
-                  blurOnSubmit={false}
-                  editable={aiState === "idle"}
-                  maxLength={600}
+              <Pressable
+                onPress={() => goToQuickSession(typedInput)}
+                disabled={!typedInput.trim() || aiState !== "idle"}
+                style={({ pressed }) => ({
+                  width: 30, height: 30, borderRadius: 30,
+                  backgroundColor: typedInput.trim() && aiState === "idle" ? "#7A4A22" : "rgba(122,74,34,0.20)",
+                  alignItems: "center", justifyContent: "center",
+                  opacity: pressed ? 0.82 : 1,
+                })}
+              >
+                <Ionicons
+                  name="arrow-forward" size={15}
+                  color={typedInput.trim() && aiState === "idle" ? "#FFF" : "rgba(122,74,34,0.55)"}
                 />
-                <Pressable
-                  onPress={() => goToQuickSession(typedInput)}
-                  disabled={!typedInput.trim() || aiState !== "idle"}
-                  style={({ pressed }) => ({
-                    width: 30, height: 30, borderRadius: 30,
-                    backgroundColor: typedInput.trim() && aiState === "idle" ? "#7A4A22" : "rgba(122,74,34,0.20)",
-                    alignItems: "center", justifyContent: "center",
-                    opacity: pressed ? 0.82 : 1,
-                  })}
-                >
-                  <Ionicons
-                    name="arrow-forward" size={15}
-                    color={typedInput.trim() && aiState === "idle" ? "#FFF" : "rgba(122,74,34,0.55)"}
-                  />
-                </Pressable>
-              </View>
+              </Pressable>
             </View>
-
           </View>
         </KeyboardAvoidingView>
+
+        {/* ── Dim overlay when typing — centered text preview, no duplicate orb ── */}
+        {isTypingFocused && (
+          <Pressable
+            onPress={() => { setIsTypingFocused(false); Keyboard.dismiss(); }}
+            style={{
+              position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+              backgroundColor: "rgba(18,14,10,0.78)", zIndex: 50,
+              alignItems: "center", justifyContent: "center",
+              paddingBottom: 120,
+            }}
+            pointerEvents="box-only"
+          >
+            {typedInput.length > 0 ? (
+              <Text style={{
+                fontSize: 30, fontFamily: "Fraunces-Regular",
+                color: "#FFFFFF", textAlign: "center", paddingHorizontal: 28,
+                lineHeight: 38, letterSpacing: -0.4,
+              }}>
+                {typedInput}
+              </Text>
+            ) : (
+              <Text style={{
+                fontSize: 15, fontFamily: "Geist-Regular",
+                color: "rgba(255,255,255,0.40)", textAlign: "center",
+              }}>
+                Type in {language.label}…
+              </Text>
+            )}
+          </Pressable>
+        )}
 
         {/* ── Language picker overlay ── */}
         {showLanguagePicker && (
@@ -1969,6 +2039,7 @@ export default function TrainScreen() {
                   ) : (
                     <View style={{ width: 22 }} />
                   )}
+                  <Text style={{ fontSize: 26 }}>{FLAG[lang.code] ?? "🌐"}</Text>
                   <View>
                     <Text style={{ fontFamily: "Geist-Bold", fontSize: 18, color: lang.code === languageCode ? "#C8804A" : "#FFFFFF", letterSpacing: -0.3 }}>
                       {lang.label}
@@ -2018,7 +2089,7 @@ export default function TrainScreen() {
           const introLine = `Let's learn to say: "${trimmed}". In ${language.label}, you say:`;
           await speakRoutedText({ text: introLine, languageCode: nativeCode });
           await new Promise((r) => setTimeout(r, 400));
-          await speakRoutedText({ text: res.naturalPhrase || trimmed, languageCode: language.code, rate: 0.85 });
+          await speakRoutedText({ text: res.naturalPhrase || trimmed, languageCode: language.code });
         } catch {}
         setPhraseCoachingSpeaking(false);
         // Advance from intro → practicing
@@ -2077,8 +2148,8 @@ export default function TrainScreen() {
           } else {
             const coachLine = fb.suggestion || "Try again — listen carefully.";
             await speakRoutedText({ text: coachLine, languageCode: nativeCode });
-            await new Promise((r) => setTimeout(r, 500));
-            await speakRoutedText({ text: targetText, languageCode: language.code, rate: 0.85 });
+            await new Promise((r) => setTimeout(r, 200));
+            await speakRoutedText({ text: targetText, languageCode: language.code });
           }
         } catch {}
         setPhraseCoachingSpeaking(false);
@@ -2086,12 +2157,17 @@ export default function TrainScreen() {
         phraseSpeechRef.current = null;
         setPhraseAiState("idle");
         setPhraseAttemptText("");
-        setPhraseFeedback({
-          score: 0,
-          rating: "off",
-          missingSegments: [],
-          suggestion: err?.message || "Couldn't reach the microphone.",
-        });
+        if (err instanceof SpeechPermissionError && err.canOpenSettings) {
+          Alert.alert("Microphone Access", "UseLang needs microphone access to practice speaking.", [
+            { text: "Open Settings", onPress: () => Linking.openSettings() },
+            { text: "Cancel", style: "cancel" },
+          ]);
+        } else {
+          setPhraseFeedback({
+            score: 0, rating: "off", missingSegments: [],
+            suggestion: err?.message || "Couldn't reach the microphone. Please try again.",
+          });
+        }
       }
     };
 
@@ -2129,8 +2205,8 @@ export default function TrainScreen() {
             await speakRoutedText({ text: "Great job! Now let's test you in a real scenario.", languageCode: nativeCode });
           } else {
             await speakRoutedText({ text: fb.suggestion || "Try saying the full sentence again.", languageCode: nativeCode });
-            await new Promise((r) => setTimeout(r, 500));
-            await speakRoutedText({ text: phraseSession.fullTarget, languageCode: language.code, rate: 0.85 });
+            await new Promise((r) => setTimeout(r, 200));
+            await speakRoutedText({ text: phraseSession.fullTarget, languageCode: language.code });
           }
         } catch {}
         setPhraseCoachingSpeaking(false);
@@ -2143,12 +2219,17 @@ export default function TrainScreen() {
       } catch (err: any) {
         phraseSpeechRef.current = null;
         setPhraseAiState("idle");
-        setPhraseFeedback({
-          score: 0,
-          rating: "off",
-          missingSegments: [],
-          suggestion: err?.message || "Couldn't reach the microphone.",
-        });
+        if (err instanceof SpeechPermissionError && err.canOpenSettings) {
+          Alert.alert("Microphone Access", "UseLang needs microphone access to practice speaking.", [
+            { text: "Open Settings", onPress: () => Linking.openSettings() },
+            { text: "Cancel", style: "cancel" },
+          ]);
+        } else {
+          setPhraseFeedback({
+            score: 0, rating: "off", missingSegments: [],
+            suggestion: err?.message || "Couldn't reach the microphone. Please try again.",
+          });
+        }
       }
     };
 
@@ -2183,24 +2264,53 @@ export default function TrainScreen() {
         try {
           if (fb.score >= PHRASE_MASTERY_THRESHOLD) {
             await speakRoutedText({ text: "You nailed it! Skill unlocked.", languageCode: nativeCode });
+            // Award XP, coins, save phrase, and record attempt
+            const xpAmount = 25;
+            try {
+              const xpResult = await addXP(xpAmount);
+              setPhraseXpEarned(xpAmount);
+              await addCoins(10);
+              if (xpResult.levelUp) playSound("level-up");
+              else playSound("xp-gain");
+              await savePhrase({
+                languageCode: language.code,
+                phrase: phraseSession.fullTarget,
+                phonetic: phraseSession.fullPhonetic || "",
+                meaning: phraseSession.originalPhrase || "",
+                tip: "",
+              });
+              await recordAttempt({
+                languageCode: language.code,
+                phrase: phraseSession.fullTarget,
+                score: Math.round(fb.score * 100),
+                mode: "train",
+              });
+            } catch (e) {
+              console.warn("[phrase] XP/save error:", e);
+            }
             setSkillUnlockVisible(true);
           } else {
             const coachLine = fb.suggestion || "Not quite — let's practice the tricky parts again.";
             await speakRoutedText({ text: coachLine, languageCode: nativeCode });
-            await new Promise((r) => setTimeout(r, 500));
-            await speakRoutedText({ text: phraseSession.fullTarget, languageCode: language.code, rate: 0.85 });
+            await new Promise((r) => setTimeout(r, 200));
+            await speakRoutedText({ text: phraseSession.fullTarget, languageCode: language.code });
           }
         } catch {}
         setPhraseCoachingSpeaking(false);
       } catch (err: any) {
         phraseSpeechRef.current = null;
         setPhraseAiState("idle");
-        setScenarioFeedback({
-          score: 0,
-          rating: "off",
-          missingSegments: [],
-          suggestion: err?.message || "Couldn't reach the microphone.",
-        });
+        if (err instanceof SpeechPermissionError && err.canOpenSettings) {
+          Alert.alert("Microphone Access", "UseLang needs microphone access to practice speaking.", [
+            { text: "Open Settings", onPress: () => Linking.openSettings() },
+            { text: "Cancel", style: "cancel" },
+          ]);
+        } else {
+          setScenarioFeedback({
+            score: 0, rating: "off", missingSegments: [],
+            suggestion: err?.message || "Couldn't reach the microphone. Please try again.",
+          });
+        }
       }
     };
 
@@ -2212,7 +2322,12 @@ export default function TrainScreen() {
     };
 
     const handlePhraseOrbTap = () => {
-      if (phraseCoachingSpeaking) return;
+      if (phraseCoachingSpeaking) {
+        // Let user interrupt AI coaching by tapping the orb
+        stopRoutedTts().catch(() => {});
+        setPhraseCoachingSpeaking(false);
+        return;
+      }
       if (phraseAiState === "listening") {
         phraseSpeechRef.current?.stop();
         phraseSpeechRef.current = null;
@@ -2562,7 +2677,10 @@ export default function TrainScreen() {
                 ) : null}
               </>
             )}
-            <Text style={{ fontFamily: "Geist-Regular", fontSize: 12, color: "rgba(28,23,20,0.40)", marginTop: 4, fontStyle: "italic" }}>{phraseSession.originalPhrase}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: "rgba(122,74,34,0.08)" }}>
+              <Text style={{ fontFamily: "Geist-SemiBold", fontSize: 10, color: "#7A4A22", letterSpacing: 1 }}>MEANS</Text>
+              <Text style={{ fontFamily: "Geist-Medium", fontSize: 14, color: "rgba(28,23,20,0.75)", flex: 1 }}>{phraseSession.originalPhrase}</Text>
+            </View>
           </View>
 
           {/* Current chunk card OR final sentence card */}
@@ -2597,6 +2715,10 @@ export default function TrainScreen() {
                   </Text>
                 </>
               )}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: "rgba(122,74,34,0.08)" }}>
+                <Text style={{ fontFamily: "Geist-SemiBold", fontSize: 10, color: "#7A4A22", letterSpacing: 1 }}>MEANS</Text>
+                <Text style={{ fontFamily: "Geist-SemiBold", fontSize: 15, color: "#1C1714" }}>{phraseSession.originalPhrase}</Text>
+              </View>
             </View>
           )}
 
@@ -2640,9 +2762,10 @@ export default function TrainScreen() {
                   ) : null}
                 </>
               )}
-              <Text style={{ fontFamily: "Geist-Regular", fontSize: 13, color: "rgba(28,23,20,0.45)", marginTop: 10 }}>
-                {currentChunk.english}
-              </Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 }}>
+                <Text style={{ fontFamily: "Geist-SemiBold", fontSize: 10, color: "#7A4A22", letterSpacing: 1 }}>MEANS</Text>
+                <Text style={{ fontFamily: "Geist-SemiBold", fontSize: 16, color: "#1C1714" }}>{currentChunk.english}</Text>
+              </View>
               {currentChunk.tip ? (
                 <View style={{ marginTop: 14, backgroundColor: "rgba(122,74,34,0.05)", borderRadius: 12, padding: 12 }}>
                   <Text style={{ fontFamily: "Geist-Regular", fontSize: 12, color: "#7A4A22", lineHeight: 17 }}>
@@ -2830,7 +2953,8 @@ export default function TrainScreen() {
           <CompletionOverlay
             phraseSession={phraseSession}
             language={language}
-            onDismiss={() => { setPhraseSession(null); setPhraseInput(""); setPhraseFeedback(null); setPhraseAttemptText(""); setPhraseComplete(false); setSkillUnlockVisible(false); setScenarioAttemptText(""); setScenarioFeedback(null); }}
+            xpEarned={phraseXpEarned}
+            onDismiss={() => { setPhraseSession(null); setPhraseInput(""); setPhraseFeedback(null); setPhraseAttemptText(""); setPhraseComplete(false); setSkillUnlockVisible(false); setScenarioAttemptText(""); setScenarioFeedback(null); setPhraseXpEarned(0); }}
           />
         )}
       </SafeAreaView>

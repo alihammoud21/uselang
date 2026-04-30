@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getUserProfile } from "@/lib/user-store";
 import { getCurriculum } from "@/data/lessons";
 import { getCoinBalance, spendCoins, getChallenges } from "@/lib/challenge-store";
@@ -69,6 +70,7 @@ export default function LessonsScreen() {
   const [loading, setLoading] = useState(true);
   const [coinBalance, setCoinBalance] = useState(0);
   const [completedMissions, setCompletedMissions] = useState(0);
+  const [examUnlocked, setExamUnlocked] = useState(false);
   const langCodeRef = useRef(""); // stable ref for subscriber closure
 
   const switchToLang = useCallback(async (code: string) => {
@@ -99,9 +101,14 @@ export default function LessonsScreen() {
   }, [switchToLang]);
 
   const loadExamMeta = useCallback(async () => {
-    const [bal, chs] = await Promise.all([getCoinBalance(), getChallenges()]);
+    const [bal, chs, unlockFlag] = await Promise.all([
+      getCoinBalance(),
+      getChallenges(),
+      AsyncStorage.getItem(`lang:examUnlock:${langCodeRef.current}`),
+    ]);
     setCoinBalance(bal);
     setCompletedMissions(chs.filter((c) => c.completed).length);
+    setExamUnlocked(unlockFlag === "1");
   }, []);
 
   useFocusEffect(useCallback(() => { loadExamMeta(); }, [loadExamMeta]));
@@ -164,10 +171,21 @@ export default function LessonsScreen() {
               <Text style={{ fontFamily: F.serifItalic }}> · your path</Text>
             </Text>
           </View>
-          {/* Overall progress pill */}
-          <View style={S.progressPill}>
-            <Text style={S.progressPillText}>{stats.completed}/{stats.total}</Text>
-            <Text style={S.progressPillSub}>done</Text>
+          <View style={{ alignItems: "flex-end", gap: 6 }}>
+            {/* Overall progress pill */}
+            <View style={S.progressPill}>
+              <Text style={S.progressPillText}>{stats.completed}/{stats.total}</Text>
+              <Text style={S.progressPillSub}>done</Text>
+            </View>
+            {/* FUN Easter egg — visible only when admin exam unlocked */}
+            {examUnlocked && (
+              <Pressable
+                onPress={() => router.push({ pathname: "/flappy", params: { lang: langCode } } as any)}
+                style={S.funBtn}
+              >
+                <Text style={S.funBtnText}>✦ FUN</Text>
+              </Pressable>
+            )}
           </View>
         </View>
 
@@ -199,7 +217,7 @@ export default function LessonsScreen() {
           const allLangDone = stats.total > 0 && stats.completed === stats.total;
           const hasMissions = completedMissions >= 2;
           const hasCoins = coinBalance >= 1000;
-          const examUnlocked = allLangDone && hasMissions && hasCoins;
+          const examReady = examUnlocked || (allLangDone && hasMissions && hasCoins);
           const langLabel = curriculum.languageLabel;
           const missingParts = [
             !allLangDone  && `${stats.total - stats.completed} lessons left`,
@@ -209,36 +227,47 @@ export default function LessonsScreen() {
           return (
             <Pressable
               onPress={async () => {
-                if (!examUnlocked) return;
-                const result = await spendCoins(1000);
-                if (!result.success) return;
+                if (!examReady) return;
+                if (!examUnlocked) {
+                  const result = await spendCoins(1000);
+                  if (!result.success) return;
+                }
                 router.push({ pathname: "/unit-exam", params: { examId: langCode, lang: langCode } } as any);
               }}
               style={({ pressed }) => ([
                 S.examCard,
-                examUnlocked ? S.examCardReady : S.examCardLocked,
-                pressed && examUnlocked ? { opacity: 0.88 } : {},
+                examReady ? S.examCardReady : S.examCardLocked,
+                pressed && examReady ? { opacity: 0.88 } : {},
               ])}
             >
-              <View style={[S.examIconWrap, { backgroundColor: examUnlocked ? "rgba(255,255,255,0.18)" : "rgba(17,16,16,0.08)" }]}>
-                <Ionicons name={examUnlocked ? "ribbon" : "lock-closed"} size={20} color={examUnlocked ? "#FFF" : T.muted} />
+              <View style={[S.examIconWrap, { backgroundColor: examReady ? "rgba(255,255,255,0.18)" : "rgba(17,16,16,0.08)" }]}>
+                <Ionicons name={examReady ? "ribbon" : "lock-closed"} size={20} color={examReady ? "#FFF" : T.muted} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[S.examTitle, !examUnlocked && { color: T.muted }]}>
+                <Text style={[S.examTitle, !examReady && { color: T.muted }]}>
                   {langLabel} Final Exam
                 </Text>
-                <Text style={[S.examSub, !examUnlocked && { color: T.muted2 }]}>
-                  {examUnlocked ? "MC · Listening · Typing · Oral → Certificate" : missingParts}
+                <Text style={[S.examSub, !examReady && { color: T.muted2 }]}>
+                  {examReady
+                    ? examUnlocked
+                      ? "Admin unlocked · MC · Listening · Typing · Oral"
+                      : "MC · Listening · Typing · Oral → Certificate"
+                    : missingParts}
                 </Text>
               </View>
-              {examUnlocked && (
+              {examReady && !examUnlocked && (
                 <View style={S.examCost}>
                   <Text style={S.examCostText}>🪙 1,000</Text>
                 </View>
               )}
+              {examReady && examUnlocked && (
+                <View style={[S.examCost, { backgroundColor: "rgba(255,255,255,0.20)" }]}>
+                  <Text style={[S.examCostText, { color: "#FFF" }]}>FREE</Text>
+                </View>
+              )}
             </Pressable>
           );
-        })()}
+        })()} 
 
         {/* ── Abilities earned ─────────────────────────────────────────── */}
         {progress && progress.abilities.length > 0 && (
@@ -273,6 +302,57 @@ export default function LessonsScreen() {
             }
           />
         ))}
+
+        {/* ── Activity Hub ──────────────────────────────────────────────── */}
+        <Text style={[S.sectionLabel, { marginTop: 8, marginBottom: 12 }]}>ACTIVITIES</Text>
+        <View style={{ gap: 10, marginBottom: 32 }}>
+
+          {/* Listen & Match */}
+          <Pressable
+            onPress={() => router.push({ pathname: "/listen-match", params: { lang: langCode } } as any)}
+            style={({ pressed }) => [S.activityCard, { borderColor: "rgba(200,128,74,0.20)" }, pressed && { opacity: 0.85 }]}
+          >
+            <View style={[S.activityIcon, { backgroundColor: "rgba(200,128,74,0.12)" }]}>
+              <Ionicons name="headset" size={22} color={T.amber} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={S.activityTitle}>Listen & Match</Text>
+              <Text style={S.activitySub}>Hear it, then pick the right meaning.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={T.muted2} />
+          </Pressable>
+
+          {/* Daily Joke */}
+          <Pressable
+            onPress={() => router.push({ pathname: "/jokes", params: { lang: langCode } } as any)}
+            style={({ pressed }) => [S.activityCard, { borderColor: "rgba(74,124,89,0.20)" }, pressed && { opacity: 0.85 }]}
+          >
+            <View style={[S.activityIcon, { backgroundColor: "rgba(74,124,89,0.10)" }]}>
+              <Ionicons name="happy-outline" size={22} color={T.done} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={S.activityTitle}>Daily Joke</Text>
+              <Text style={S.activitySub}>One joke a day keeps the boredom away.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={T.muted2} />
+          </Pressable>
+
+          {/* Interactive Story */}
+          <Pressable
+            onPress={() => router.push({ pathname: "/story", params: { lang: langCode } } as any)}
+            style={({ pressed }) => [S.activityCard, { borderColor: "rgba(28,23,20,0.12)" }, pressed && { opacity: 0.85 }]}
+          >
+            <View style={[S.activityIcon, { backgroundColor: "rgba(28,23,20,0.06)" }]}>
+              <Ionicons name="book" size={22} color={T.ink2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={S.activityTitle}>Adventure Story</Text>
+              <Text style={S.activitySub}>Make choices, learn vocab, earn XP.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={T.muted2} />
+          </Pressable>
+
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -558,4 +638,22 @@ const S = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 5, flexShrink: 0,
   },
   examCostText: { fontFamily: F.sansBold, fontSize: 12, color: "#FFF" },
+
+  activityCard: {
+    flexDirection: "row", alignItems: "center", gap: 14,
+    backgroundColor: T.card, borderRadius: 16, padding: 16,
+    borderWidth: 0.5,
+    shadowColor: T.ink, shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
+  },
+  activityIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center" as const, justifyContent: "center" as const },
+  activityTitle: { fontFamily: F.sansSemi, fontSize: 15, color: T.ink, marginBottom: 2 },
+  activitySub: { fontFamily: F.sans, fontSize: 12, color: T.muted },
+
+  funBtn: {
+    borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1.5,
+    borderColor: T.amber,
+  },
+  funBtnText: { fontFamily: F.sansBold, fontSize: 11, color: T.amber, letterSpacing: 0.5 },
 });

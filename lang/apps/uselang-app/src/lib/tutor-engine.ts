@@ -635,8 +635,9 @@ export function phraseScoreChunk(
 }
 
 export function phraseScoreFinal(session: PhraseSession, score: number): PhraseSession {
-  // After full-sentence attempt, advance to scenario test instead of immediately completing
-  return { ...session, finalScore: score, phase: "scenario" };
+  // Only advance to scenario once the full sentence is mastered; otherwise stay in "final" to retry
+  const phase = score >= PHRASE_MASTERY_THRESHOLD ? "scenario" : "final";
+  return { ...session, finalScore: score, phase };
 }
 
 export function getPhraseProgress(session: PhraseSession): { mastered: number; total: number } {

@@ -26,7 +26,16 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const SILENCE_AFTER_SPEECH_MS = 2_000; // wait 2s of silence after speech before finalizing
 const MIN_LISTEN_MS = 1_500; // never finalize before 1.5s to prevent premature cutoff
 export const OFFLINE_STT_UNSUPPORTED_MESSAGE =
-  "Offline speech recognition isn't installed for this language. Open iOS Settings → General → Keyboard → Dictation, enable the language, then go to Siri & Search → Language and pick it. iOS will download the offline pack.";
+  "Offline speech recognition isn't available for this language yet. Please check your device settings.";
+
+export class SpeechPermissionError extends Error {
+  canOpenSettings: boolean;
+  constructor(message: string, canOpenSettings: boolean) {
+    super(message);
+    this.name = "SpeechPermissionError";
+    this.canOpenSettings = canOpenSettings;
+  }
+}
 
 function dlog(...args: unknown[]): void {
   // eslint-disable-next-line no-console
@@ -139,17 +148,16 @@ export async function ensureNativeSpeechPermission(requiresOnDevice = true): Pro
     // recognition on iOS. Don't throw here — let the caller continue and
     // hit the native bridge directly if it's available.
     if (Platform.OS === "ios" && getOfflineVoiceModule()) return;
-    throw new Error("Speech recognition isn't initialized yet. Allow microphone + speech access, then make sure the language is installed under iOS Settings → General → Keyboard → Dictation.");
+    throw new SpeechPermissionError("Microphone access is needed to practice speaking.", true);
   }
   const result =
     requiresOnDevice && Platform.OS === "ios"
       ? await module.requestMicrophonePermissionsAsync()
       : await module.requestPermissionsAsync();
   if (!result.granted) {
-    throw new Error(
-      result.canAskAgain === false
-        ? "Microphone permission denied. Enable it in Settings → UseLang → Microphone."
-        : "Microphone permission denied."
+    throw new SpeechPermissionError(
+      "Microphone access is needed to practice speaking.",
+      result.canAskAgain === false,
     );
   }
 }
@@ -157,14 +165,13 @@ export async function ensureNativeSpeechPermission(requiresOnDevice = true): Pro
 export async function requestNativeSpeechMicrophonePermission(): Promise<void> {
   const module = getSpeechModule();
   if (!module) {
-    throw new Error("Speech recognition isn't initialized yet. Allow microphone + speech access, then make sure the language is installed under iOS Settings → General → Keyboard → Dictation.");
+    throw new SpeechPermissionError("Microphone access is needed to practice speaking.", true);
   }
   const result = await module.requestMicrophonePermissionsAsync();
   if (!result.granted) {
-    throw new Error(
-      result.canAskAgain === false
-        ? "Microphone permission denied. Enable it in Settings -> UseLang -> Microphone."
-        : "Microphone permission denied."
+    throw new SpeechPermissionError(
+      "Microphone access is needed to practice speaking.",
+      result.canAskAgain === false,
     );
   }
 }

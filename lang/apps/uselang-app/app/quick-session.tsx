@@ -25,6 +25,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Linking,
   Pressable,
   ScrollView,
   Text,
@@ -52,7 +54,7 @@ import { AnimatedMouth } from "@/components/AnimatedMouth";
 import { SphereOrb } from "@/components/SphereOrb";
 import { getUserProfile } from "@/lib/user-store";
 import { savePhrase } from "@/lib/phrase-store";
-import { recognizeSpeechOnce, type NativeSpeechSession } from "@/lib/native-speech";
+import { recognizeSpeechOnce, SpeechPermissionError, type NativeSpeechSession } from "@/lib/native-speech";
 import { comparePronunciation, type PronunciationFeedback } from "@/lib/pronunciation-feedback";
 import { speakRoutedText, stopRoutedTts } from "@/lib/tts-router";
 import { prewarmOfflineTts } from "@/lib/offline-tts";
@@ -379,7 +381,7 @@ export default function QuickSessionScreen() {
         try {
           const coachLine = fb.suggestion || "Try again — listen carefully.";
           await speakRoutedText({ text: coachLine, languageCode: nativeLang });
-          await new Promise((r) => setTimeout(r, 600));
+          await new Promise((r) => setTimeout(r, 200));
           await speakRoutedText({ text: targetPhrase, languageCode: learnLang });
         } catch {}
         setAiState("idle");
@@ -387,15 +389,20 @@ export default function QuickSessionScreen() {
     } catch (err: any) {
       speechSessionRef.current = null;
       setAiState("idle");
-      setLastAttemptText("");
-      setFeedback({
-        score: 0,
-        rating: "off",
-        missingSegments: [],
-        suggestion:
-          err?.message ||
-          "Couldn't reach the microphone. Check the iOS Settings → Privacy mic permission and try again.",
-      });
+      if (err instanceof SpeechPermissionError && err.canOpenSettings) {
+        Alert.alert(
+          "Microphone Access",
+          "UseLang needs microphone access to hear you speak.",
+          [
+            { text: "Open Settings", onPress: () => Linking.openSettings() },
+            { text: "Cancel", style: "cancel" },
+          ],
+        );
+      } else if (err instanceof SpeechPermissionError) {
+        Alert.alert("Microphone Access", err.message, [{ text: "OK" }]);
+      } else {
+        setLastAttemptText("Didn't catch that — hold the orb and try again.");
+      }
     }
   }, [response, learnLang, nativeLang]);
   // Stable ref so the auto-listen callback in startPlayback can call the
@@ -452,10 +459,30 @@ export default function QuickSessionScreen() {
 
   // ── Header back ────────────────────────────────────────────────────────
   const handleClose = useCallback(() => {
-    stopTutorAudio().catch(() => {});
-    if (router.canGoBack()) router.back();
-    else router.replace("/(tabs)");
-  }, [router]);
+    if (aiState === "listening" || aiState === "speaking" || feedback || lastAttemptText) {
+      Alert.alert(
+        "Leave this session?",
+        "You'll lose your current XP progress if you leave.",
+        [
+          { text: "Keep Going", style: "cancel" },
+          {
+            text: "Leave",
+            style: "destructive",
+            onPress: () => {
+              stopTutorAudio().catch(() => {});
+              stopRoutedTts().catch(() => {});
+              if (router.canGoBack()) router.back();
+              else router.replace("/(tabs)");
+            },
+          },
+        ],
+      );
+    } else {
+      stopTutorAudio().catch(() => {});
+      if (router.canGoBack()) router.back();
+      else router.replace("/(tabs)");
+    }
+  }, [router, aiState, feedback, lastAttemptText]);
 
   // ── Derived ────────────────────────────────────────────────────────────
   const phoneme = useMemo(() => phonemeFromResponse(response), [response]);

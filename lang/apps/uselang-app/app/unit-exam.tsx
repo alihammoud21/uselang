@@ -202,7 +202,7 @@ export default function UnitExamScreen() {
     setListenHasPlayed(false);
     Speech.speak(q.audioText, {
       language: q.audioLang,
-      rate: 0.85,
+      rate: 1.0,
       onDone: () => { setListenPlaying(false); setListenHasPlayed(true); },
       onError: () => { setListenPlaying(false); setListenHasPlayed(true); },
     });
@@ -263,7 +263,7 @@ export default function UnitExamScreen() {
     setOralState("speaking-phrase");
     Speech.speak(q.phrase, {
       language: langToTTSLocale(ex.langCode),
-      rate: 0.75,
+      rate: 1.0,
       onDone: () => setOralState("idle"),
       onError: () => setOralState("idle"),
     });

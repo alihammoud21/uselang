@@ -90,13 +90,10 @@ export async function speakOfflineText({
   const locale = ttsLocaleFor(languageCode);
   const native = getNativeModule();
 
-  // Slower-than-default baseline. expo-speech defaults to 1.0 (which is
-  // already too fast for coaching), and the previous 0.9 multiplier still
-  // sounded rapid-fire. 0.78 gives the offline voice a clear, paced
-  // delivery — closer to how a tutor would actually say it. The
-  // user-supplied `rate` param still scales on top of this baseline so the
-  // voice-speed setting on the Lesson screen keeps working.
-  const PACED_BASELINE = 0.78;
+  // Use the natural system voice speed (1.0). Slowing down made voices
+  // sound artificially deep/robotic — native iOS zh-CN/es/fr voices
+  // are already well-paced at 1.0.
+  const PACED_BASELINE = 1.0;
   const safeRate = Math.max(0.5, Math.min(2, rate));
 
   // Split into sentence-sized chunks so we can insert short pauses
@@ -154,9 +151,9 @@ function splitForPacing(text: string): { text: string; pauseMs: number }[] {
     if (!trimmed) continue;
     const last = trimmed.slice(-1);
     let pauseMs = 0;
-    if (".!?".includes(last)) pauseMs = 320;
-    else if (last === ":") pauseMs = 220;
-    else if (",;".includes(last)) pauseMs = 160;
+    if (".!?".includes(last)) pauseMs = 180;
+    else if (last === ":") pauseMs = 120;
+    else if (",;".includes(last)) pauseMs = 80;
     out.push({ text: trimmed, pauseMs });
   }
   // No terminators? push the whole thing with a small trailing pause.
