@@ -2,7 +2,14 @@
 // Schedule a repeating local notification to remind the user to practice.
 // Uses expo-notifications with daily trigger. Works fully offline.
 
-import * as Notifications from "expo-notifications";
+// Dynamic import — expo-notifications native module may not exist in Expo Go.
+// All public functions become safe no-ops when the module is unavailable.
+let Notifications: any = null;
+try {
+  Notifications = require("expo-notifications");
+} catch {
+  console.warn("[daily-notifications] expo-notifications not available — notifications disabled");
+}
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -23,6 +30,7 @@ const MESSAGES = [
 // ── Permissions + channel setup ─────────────────────────────────────────────
 
 async function ensurePermissions(): Promise<boolean> {
+  if (!Notifications) return false;
   const { status: existing } = await Notifications.getPermissionsAsync();
   if (existing === "granted") return true;
   const { status } = await Notifications.requestPermissionsAsync();
@@ -30,10 +38,11 @@ async function ensurePermissions(): Promise<boolean> {
 }
 
 function ensureChannel() {
+  if (!Notifications) return;
   if (Platform.OS === "android") {
     Notifications.setNotificationChannelAsync(CHANNEL_ID, {
       name: "Daily Reminder",
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: Notifications.AndroidImportance?.HIGH ?? 4,
       sound: "default",
     });
   }
@@ -41,15 +50,17 @@ function ensureChannel() {
 
 // ── Configure foreground behavior ───────────────────────────────────────────
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: false,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-    shouldShowBanner: false,
-    shouldShowList: false,
-  }),
-});
+if (Notifications) {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: false,
+      shouldPlaySound: false,
+      shouldSetBadge: false,
+      shouldShowBanner: false,
+      shouldShowList: false,
+    }),
+  });
+}
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -58,6 +69,7 @@ Notifications.setNotificationHandler({
  * daily reminder first to avoid duplicates.
  */
 export async function scheduleDailyNotification(hour: number): Promise<boolean> {
+  if (!Notifications) return false;
   const granted = await ensurePermissions();
   if (!granted) return false;
 
@@ -77,7 +89,7 @@ export async function scheduleDailyNotification(hour: number): Promise<boolean> 
       ...(Platform.OS === "android" ? { channelId: CHANNEL_ID } : {}),
     },
     trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      type: Notifications.SchedulableTriggerInputTypes?.DAILY ?? "daily",
       hour,
       minute: 0,
     },
@@ -91,7 +103,9 @@ export async function scheduleDailyNotification(hour: number): Promise<boolean> 
  * Cancel daily notification.
  */
 export async function cancelDailyNotification(): Promise<void> {
-  await Notifications.cancelAllScheduledNotificationsAsync();
+  if (Notifications) {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+  }
   await AsyncStorage.removeItem(STORAGE_KEY);
 }
 
