@@ -2113,3 +2113,294 @@ function extractUserPhrase(userTurn: string): string {
   const first = userTurn.split("\n").map((l) => l.trim()).find(Boolean);
   return first || "hello";
 }
+
+// ── Local word-composition engine (100% offline, no APIs) ──────────────────
+// Maps English words → target language equivalents. Used as a fallback when
+// the curated phrase list doesn't match and Gemma isn't loaded.
+// Grammar is simplified: Subject + 在/está/est + Verb + Object for progressive;
+// Subject + Verb + Object for simple present.
+
+interface WordEntry { zh: string; zhPin: string; es: string; fr: string }
+
+const EN_WORDS: Record<string, WordEntry> = {
+  // People & pronouns
+  i:       { zh:"我", zhPin:"wǒ",    es:"yo",       fr:"je" },
+  me:      { zh:"我", zhPin:"wǒ",    es:"mí",       fr:"moi" },
+  you:     { zh:"你", zhPin:"nǐ",    es:"tú",       fr:"tu" },
+  he:      { zh:"他", zhPin:"tā",    es:"él",       fr:"il" },
+  she:     { zh:"她", zhPin:"tā",    es:"ella",     fr:"elle" },
+  we:      { zh:"我们",zhPin:"wǒmen",es:"nosotros", fr:"nous" },
+  they:    { zh:"他们",zhPin:"tāmen",es:"ellos",    fr:"ils" },
+  my:      { zh:"我的",zhPin:"wǒ de",es:"mi",       fr:"mon" },
+  your:    { zh:"你的",zhPin:"nǐ de",es:"tu",       fr:"ton" },
+  his:     { zh:"他的",zhPin:"tā de",es:"su",       fr:"son" },
+  her:     { zh:"她的",zhPin:"tā de",es:"su",       fr:"son" },
+  our:     { zh:"我们的",zhPin:"wǒmen de",es:"nuestro",fr:"notre" },
+  // Animals
+  cat:     { zh:"猫", zhPin:"māo",   es:"gato",     fr:"chat" },
+  dog:     { zh:"狗", zhPin:"gǒu",   es:"perro",    fr:"chien" },
+  bird:    { zh:"鸟", zhPin:"niǎo",  es:"pájaro",   fr:"oiseau" },
+  fish:    { zh:"鱼", zhPin:"yú",    es:"pez",      fr:"poisson" },
+  horse:   { zh:"马", zhPin:"mǎ",    es:"caballo",  fr:"cheval" },
+  cow:     { zh:"牛", zhPin:"niú",   es:"vaca",     fr:"vache" },
+  pig:     { zh:"猪", zhPin:"zhū",   es:"cerdo",    fr:"cochon" },
+  chicken: { zh:"鸡", zhPin:"jī",    es:"pollo",    fr:"poulet" },
+  rabbit:  { zh:"兔子",zhPin:"tùzi", es:"conejo",   fr:"lapin" },
+  bear:    { zh:"熊", zhPin:"xióng", es:"oso",      fr:"ours" },
+  // Food & drink
+  food:    { zh:"食物",zhPin:"shíwù",es:"comida",   fr:"nourriture" },
+  water:   { zh:"水", zhPin:"shuǐ",  es:"agua",     fr:"eau" },
+  rice:    { zh:"米饭",zhPin:"mǐfàn",es:"arroz",    fr:"riz" },
+  bread:   { zh:"面包",zhPin:"miànbāo",es:"pan",    fr:"pain" },
+  meat:    { zh:"肉", zhPin:"ròu",   es:"carne",    fr:"viande" },
+  chicken_food: { zh:"鸡肉",zhPin:"jīròu",es:"pollo",fr:"poulet" },
+  fish_food: { zh:"鱼",zhPin:"yú",  es:"pescado",  fr:"poisson" },
+  vegetables: { zh:"蔬菜",zhPin:"shūcài",es:"verduras",fr:"légumes" },
+  fruit:   { zh:"水果",zhPin:"shuǐguǒ",es:"fruta", fr:"fruit" },
+  apple:   { zh:"苹果",zhPin:"píngguǒ",es:"manzana",fr:"pomme" },
+  orange:  { zh:"橙子",zhPin:"chéngzi",es:"naranja",fr:"orange" },
+  milk:    { zh:"牛奶",zhPin:"niúnǎi",es:"leche",  fr:"lait" },
+  coffee:  { zh:"咖啡",zhPin:"kāfēi",es:"café",    fr:"café" },
+  tea:     { zh:"茶", zhPin:"chá",   es:"té",       fr:"thé" },
+  beer:    { zh:"啤酒",zhPin:"píjiǔ",es:"cerveza",  fr:"bière" },
+  wine:    { zh:"葡萄酒",zhPin:"pútáojiǔ",es:"vino",fr:"vin" },
+  soup:    { zh:"汤", zhPin:"tāng",  es:"sopa",     fr:"soupe" },
+  noodles: { zh:"面条",zhPin:"miàntiáo",es:"fideos",fr:"nouilles" },
+  // Places
+  restaurant: { zh:"餐厅",zhPin:"cāntīng",es:"restaurante",fr:"restaurant" },
+  hotel:   { zh:"酒店",zhPin:"jiǔdiàn",es:"hotel",  fr:"hôtel" },
+  hospital: { zh:"医院",zhPin:"yīyuàn",es:"hospital",fr:"hôpital" },
+  airport:  { zh:"机场",zhPin:"jīchǎng",es:"aeropuerto",fr:"aéroport" },
+  station:  { zh:"车站",zhPin:"chēzhàn",es:"estación",fr:"gare" },
+  school:   { zh:"学校",zhPin:"xuéxiào",es:"escuela",fr:"école" },
+  bank:     { zh:"银行",zhPin:"yínháng",es:"banco",  fr:"banque" },
+  market:   { zh:"市场",zhPin:"shìchǎng",es:"mercado",fr:"marché" },
+  store:    { zh:"商店",zhPin:"shāngdiàn",es:"tienda",fr:"magasin" },
+  park:     { zh:"公园",zhPin:"gōngyuán",es:"parque",fr:"parc" },
+  beach:    { zh:"海滩",zhPin:"hǎitān",es:"playa",  fr:"plage" },
+  home:     { zh:"家", zhPin:"jiā",   es:"casa",     fr:"maison" },
+  house:    { zh:"房子",zhPin:"fángzi",es:"casa",    fr:"maison" },
+  room:     { zh:"房间",zhPin:"fángjiān",es:"habitación",fr:"chambre" },
+  toilet:   { zh:"厕所",zhPin:"cèsuǒ",es:"baño",   fr:"toilettes" },
+  // Common verbs (infinitive / base)
+  eat:     { zh:"吃", zhPin:"chī",   es:"comer",    fr:"manger" },
+  drink:   { zh:"喝", zhPin:"hē",    es:"beber",    fr:"boire" },
+  go:      { zh:"去", zhPin:"qù",    es:"ir",       fr:"aller" },
+  come:    { zh:"来", zhPin:"lái",   es:"venir",    fr:"venir" },
+  want:    { zh:"想要",zhPin:"xiǎng yào",es:"querer",fr:"vouloir" },
+  need:    { zh:"需要",zhPin:"xūyào",es:"necesitar",fr:"avoir besoin" },
+  have:    { zh:"有", zhPin:"yǒu",   es:"tener",    fr:"avoir" },
+  see:     { zh:"看", zhPin:"kàn",   es:"ver",      fr:"voir" },
+  look:    { zh:"看", zhPin:"kàn",   es:"mirar",    fr:"regarder" },
+  find:    { zh:"找", zhPin:"zhǎo",  es:"encontrar",fr:"trouver" },
+  buy:     { zh:"买", zhPin:"mǎi",   es:"comprar",  fr:"acheter" },
+  pay:     { zh:"付款",zhPin:"fùkuǎn",es:"pagar",  fr:"payer" },
+  help_v:  { zh:"帮助",zhPin:"bāngzhù",es:"ayudar",fr:"aider" },
+  speak:   { zh:"说话",zhPin:"shuōhuà",es:"hablar", fr:"parler" },
+  say:     { zh:"说", zhPin:"shuō",  es:"decir",    fr:"dire" },
+  understand: { zh:"明白",zhPin:"míngbai",es:"entender",fr:"comprendre" },
+  know:    { zh:"知道",zhPin:"zhīdao",es:"saber",   fr:"savoir" },
+  like:    { zh:"喜欢",zhPin:"xǐhuan",es:"gustar",  fr:"aimer" },
+  love:    { zh:"爱", zhPin:"ài",    es:"amar",     fr:"aimer" },
+  sleep:   { zh:"睡觉",zhPin:"shuìjiào",es:"dormir",fr:"dormir" },
+  wake:    { zh:"醒来",zhPin:"xǐng lái",es:"despertar",fr:"se réveiller" },
+  work:    { zh:"工作",zhPin:"gōngzuò",es:"trabajar",fr:"travailler" },
+  study:   { zh:"学习",zhPin:"xuéxí",es:"estudiar", fr:"étudier" },
+  play:    { zh:"玩", zhPin:"wán",   es:"jugar",    fr:"jouer" },
+  walk:    { zh:"走路",zhPin:"zǒulù",es:"caminar",  fr:"marcher" },
+  run:     { zh:"跑", zhPin:"pǎo",   es:"correr",   fr:"courir" },
+  sit:     { zh:"坐", zhPin:"zuò",   es:"sentarse", fr:"s'asseoir" },
+  stand:   { zh:"站", zhPin:"zhàn",  es:"pararse",  fr:"se lever" },
+  open:    { zh:"打开",zhPin:"dǎkāi",es:"abrir",    fr:"ouvrir" },
+  close:   { zh:"关闭",zhPin:"guānbì",es:"cerrar",  fr:"fermer" },
+  wait:    { zh:"等", zhPin:"děng",  es:"esperar",  fr:"attendre" },
+  call:    { zh:"打电话",zhPin:"dǎ diànhuà",es:"llamar",fr:"appeler" },
+  order:   { zh:"点", zhPin:"diǎn",  es:"pedir",    fr:"commander" },
+  book:    { zh:"预订",zhPin:"yùdìng",es:"reservar", fr:"réserver" },
+  // Common adjectives
+  big:     { zh:"大", zhPin:"dà",    es:"grande",   fr:"grand" },
+  small:   { zh:"小", zhPin:"xiǎo",  es:"pequeño",  fr:"petit" },
+  good:    { zh:"好", zhPin:"hǎo",   es:"bueno",    fr:"bon" },
+  bad:     { zh:"坏", zhPin:"huài",  es:"malo",     fr:"mauvais" },
+  hot:     { zh:"热", zhPin:"rè",    es:"caliente", fr:"chaud" },
+  cold:    { zh:"冷", zhPin:"lěng",  es:"frío",     fr:"froid" },
+  fast:    { zh:"快", zhPin:"kuài",  es:"rápido",   fr:"rapide" },
+  slow:    { zh:"慢", zhPin:"màn",   es:"lento",    fr:"lent" },
+  new:     { zh:"新", zhPin:"xīn",   es:"nuevo",    fr:"nouveau" },
+  old:     { zh:"旧", zhPin:"jiù",   es:"viejo",    fr:"vieux" },
+  happy:   { zh:"高兴",zhPin:"gāoxìng",es:"feliz",  fr:"heureux" },
+  hungry:  { zh:"饿", zhPin:"è",     es:"hambriento",fr:"affamé" },
+  thirsty: { zh:"渴", zhPin:"kě",    es:"sediento", fr:"assoiffé" },
+  tired:   { zh:"累", zhPin:"lèi",   es:"cansado",  fr:"fatigué" },
+  sick:    { zh:"病", zhPin:"bìng",  es:"enfermo",  fr:"malade" },
+  lost:    { zh:"迷路",zhPin:"mílù", es:"perdido",  fr:"perdu" },
+  free:    { zh:"免费",zhPin:"miǎnfèi",es:"gratis",fr:"gratuit" },
+  expensive: { zh:"贵",zhPin:"guì",  es:"caro",     fr:"cher" },
+  cheap:   { zh:"便宜",zhPin:"piányí",es:"barato",  fr:"pas cher" },
+  near:    { zh:"近", zhPin:"jìn",   es:"cerca",    fr:"près" },
+  far:     { zh:"远", zhPin:"yuǎn",  es:"lejos",    fr:"loin" },
+  // Common nouns
+  time:    { zh:"时间",zhPin:"shíjiān",es:"tiempo",  fr:"temps" },
+  day:     { zh:"天", zhPin:"tiān",  es:"día",      fr:"jour" },
+  night:   { zh:"晚上",zhPin:"wǎnshàng",es:"noche", fr:"nuit" },
+  morning: { zh:"早上",zhPin:"zǎoshàng",es:"mañana",fr:"matin" },
+  today:   { zh:"今天",zhPin:"jīntiān",es:"hoy",    fr:"aujourd'hui" },
+  tomorrow:{ zh:"明天",zhPin:"míngtiān",es:"mañana",fr:"demain" },
+  money:   { zh:"钱", zhPin:"qián",  es:"dinero",   fr:"argent" },
+  ticket:  { zh:"票", zhPin:"piào",  es:"billete",  fr:"billet" },
+  bag:     { zh:"包", zhPin:"bāo",   es:"bolsa",    fr:"sac" },
+  phone:   { zh:"手机",zhPin:"shǒujī",es:"teléfono",fr:"téléphone" },
+  car:     { zh:"汽车",zhPin:"qìchē",es:"coche",    fr:"voiture" },
+  taxi:    { zh:"出租车",zhPin:"chūzūchē",es:"taxi",fr:"taxi" },
+  bus:     { zh:"公共汽车",zhPin:"gōnggòng qìchē",es:"autobús",fr:"bus" },
+  train:   { zh:"火车",zhPin:"huǒchē",es:"tren",   fr:"train" },
+  road:    { zh:"路", zhPin:"lù",    es:"calle",    fr:"rue" },
+  map:     { zh:"地图",zhPin:"dìtú",  es:"mapa",    fr:"carte" },
+  problem: { zh:"问题",zhPin:"wèntí",es:"problema", fr:"problème" },
+  help:    { zh:"帮助",zhPin:"bāngzhù",es:"ayuda",   fr:"aide" },
+  // Numbers
+  one:     { zh:"一", zhPin:"yī",    es:"uno",      fr:"un" },
+  two:     { zh:"二", zhPin:"èr",    es:"dos",      fr:"deux" },
+  three:   { zh:"三", zhPin:"sān",   es:"tres",     fr:"trois" },
+  // Articles / misc (dropped in zh)
+  a:       { zh:"",   zhPin:"",      es:"un",       fr:"un" },
+  an:      { zh:"",   zhPin:"",      es:"un",       fr:"un" },
+  the:     { zh:"",   zhPin:"",      es:"el",       fr:"le" },
+  is:      { zh:"是", zhPin:"shì",   es:"es",       fr:"est" },
+  are:     { zh:"是", zhPin:"shì",   es:"son",      fr:"sont" },
+  was:     { zh:"是", zhPin:"shì",   es:"era",      fr:"était" },
+  not:     { zh:"不", zhPin:"bù",    es:"no",       fr:"ne pas" },
+  and:     { zh:"和", zhPin:"hé",    es:"y",        fr:"et" },
+  or:      { zh:"或者",zhPin:"huòzhě",es:"o",       fr:"ou" },
+  in:      { zh:"在", zhPin:"zài",   es:"en",       fr:"dans" },
+  on:      { zh:"上", zhPin:"shàng", es:"en",       fr:"sur" },
+  to:      { zh:"去", zhPin:"qù",    es:"a",        fr:"à" },
+  at:      { zh:"在", zhPin:"zài",   es:"en",       fr:"à" },
+  for:     { zh:"为", zhPin:"wèi",   es:"para",     fr:"pour" },
+  with:    { zh:"和", zhPin:"hé",    es:"con",      fr:"avec" },
+  very:    { zh:"很", zhPin:"hěn",   es:"muy",      fr:"très" },
+  please:  { zh:"请", zhPin:"qǐng",  es:"por favor",fr:"s'il vous plaît" },
+  thank:   { zh:"谢谢",zhPin:"xièxiè",es:"gracias", fr:"merci" },
+  thanks:  { zh:"谢谢",zhPin:"xièxiè",es:"gracias", fr:"merci" },
+  sorry:   { zh:"对不起",zhPin:"duìbuqǐ",es:"lo siento",fr:"désolé" },
+  excuse:  { zh:"打扰一下",zhPin:"dǎrǎo yīxià",es:"disculpa",fr:"excusez" },
+  yes:     { zh:"是的",zhPin:"shì de",es:"sí",      fr:"oui" },
+  no:      { zh:"不", zhPin:"bù",    es:"no",       fr:"non" },
+  ok:      { zh:"好的",zhPin:"hǎo de",es:"de acuerdo",fr:"d'accord" },
+  where:   { zh:"哪里",zhPin:"nǎlǐ", es:"dónde",    fr:"où" },
+  when:    { zh:"什么时候",zhPin:"shénme shíhòu",es:"cuándo",fr:"quand" },
+  how:     { zh:"怎么",zhPin:"zěnme",es:"cómo",     fr:"comment" },
+  much:    { zh:"多少",zhPin:"duōshǎo",es:"mucho",  fr:"beaucoup" },
+  more:    { zh:"更多",zhPin:"gèng duō",es:"más",   fr:"plus" },
+  this:    { zh:"这", zhPin:"zhè",   es:"este",     fr:"ce" },
+  that:    { zh:"那", zhPin:"nà",    es:"ese",      fr:"ce" },
+  here:    { zh:"这里",zhPin:"zhèlǐ",es:"aquí",     fr:"ici" },
+  there:   { zh:"那里",zhPin:"nàlǐ",es:"allí",      fr:"là-bas" },
+};
+
+// Verb "-ing" forms → base verb for lookup
+function baseVerb(word: string): string {
+  if (word.endsWith("ing") && word.length > 5) {
+    const stem = word.slice(0, -3);
+    if (EN_WORDS[stem]) return stem;
+    if (EN_WORDS[stem + "e"]) return stem + "e"; // eating→eat
+    if (stem.slice(-1) === stem.slice(-2, -1)) return stem.slice(0, -1); // running→run
+  }
+  if (word.endsWith("s") && EN_WORDS[word.slice(0, -1)]) return word.slice(0, -1);
+  if (word.endsWith("es") && EN_WORDS[word.slice(0, -2)]) return word.slice(0, -2);
+  if (word.endsWith("ed") && EN_WORDS[word.slice(0, -2)]) return word.slice(0, -2);
+  return word;
+}
+
+type ComposedTranslation = {
+  phrase: string;
+  phonetic: string;
+  chunks: Array<{ target: string; english: string; phonetic: string; tip: string }>;
+};
+
+/**
+ * Compose a translation for an arbitrary English phrase using the local
+ * vocabulary table. Returns null if fewer than 40% of words are found
+ * (indicating too many unknowns for a reliable result).
+ * 100% offline — no network, no API keys.
+ */
+export function composeLocalTranslation(
+  englishPhrase: string,
+  targetCode: string,
+): ComposedTranslation | null {
+  const code = targetCode.slice(0, 2) as "zh" | "es" | "fr";
+  if (!["zh", "es", "fr"].includes(code)) return null;
+
+  const tokens = englishPhrase
+    .toLowerCase()
+    .replace(/[?!.,;:]+/g, "")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (tokens.length === 0) return null;
+
+  // Detect progressive "is/are ... -ing" pattern
+  const hasProgressive = tokens.some((t) => t.endsWith("ing") && t.length > 4);
+
+  const translatedTokens: Array<{ src: string; tgt: string; pin: string }> = [];
+  let hits = 0;
+
+  for (let i = 0; i < tokens.length; i++) {
+    const raw = tokens[i];
+    const base = baseVerb(raw);
+    const entry = EN_WORDS[raw] || EN_WORDS[base];
+
+    if (entry) {
+      hits++;
+      const tgt = entry[code as "zh" | "es" | "fr"] as string;
+      const pin = entry.zhPin;
+      // Skip empty placeholders (articles dropped in zh)
+      if (tgt === "") continue;
+      // Progressive marker for zh: insert 在 before -ing verb
+      if (code === "zh" && raw.endsWith("ing") && raw.length > 4 && hasProgressive) {
+        translatedTokens.push({ src: raw, tgt: "在" + tgt, pin: "zài " + pin });
+      } else {
+        translatedTokens.push({ src: raw, tgt, pin });
+      }
+    }
+  }
+
+  // Require at least 40% vocabulary coverage for a usable result
+  if (hits / tokens.length < 0.4) return null;
+
+  // Build target phrase
+  let phrase = "";
+  if (code === "zh") {
+    phrase = translatedTokens.map((t) => t.tgt).join("");
+  } else {
+    phrase = translatedTokens.map((t) => t.tgt).join(" ").replace(/\s+/g, " ").trim();
+    // Capitalise first letter
+    phrase = phrase.charAt(0).toUpperCase() + phrase.slice(1);
+  }
+  if (!phrase) return null;
+
+  // Build phonetic (zh only)
+  const phonetic = code === "zh"
+    ? translatedTokens.map((t) => t.pin).filter(Boolean).join(" ")
+    : "";
+
+  // Build chunks: group every 2-3 tokens into a chunk
+  const CHUNK_SIZE = 2;
+  const chunkData: Array<{ target: string; english: string; phonetic: string; tip: string }> = [];
+  for (let i = 0; i < translatedTokens.length; i += CHUNK_SIZE) {
+    const slice = translatedTokens.slice(i, i + CHUNK_SIZE);
+    const tgtPart = code === "zh"
+      ? slice.map((t) => t.tgt).join("")
+      : slice.map((t) => t.tgt).join(" ").trim();
+    const srcPart = slice.map((t) => t.src).join(" ");
+    const pinPart = slice.map((t) => t.pin).filter(Boolean).join(" ");
+    if (tgtPart) {
+      chunkData.push({ target: tgtPart, english: srcPart, phonetic: pinPart, tip: "" });
+    }
+  }
+  if (chunkData.length === 0) {
+    chunkData.push({ target: phrase, english: englishPhrase, phonetic, tip: "" });
+  }
+
+  return { phrase, phonetic, chunks: chunkData };
+}

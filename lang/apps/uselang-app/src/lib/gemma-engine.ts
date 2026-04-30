@@ -34,7 +34,7 @@ try {
 } catch (e) {
   console.warn("[gemma-engine] react-native-litert-lm not available — will use stub fallback");
 }
-import { stubChat, stubGenerateTutorJson, getCuratedPhonetic, stripQuestionWrapper, labelToCode, pinyinToSayLike, getMandariTipForPinyin } from "./gemma-stub";
+import { stubChat, stubGenerateTutorJson, getCuratedPhonetic, stripQuestionWrapper, labelToCode, pinyinToSayLike, getMandariTipForPinyin, composeLocalTranslation } from "./gemma-stub";
 import { runWithTimeout, TimeoutError } from "./safe-async";
 
 // ── Timeouts & concurrency ────────────────────────────────────────────────
@@ -470,6 +470,73 @@ function validateAndFixChunks(
   return newChunks;
 }
 
+// ── Offline stub enrichment (no network, no external APIs) ─────────────────
+// When Gemma isn't loaded AND the phrase isn't in the curated stub, the stub
+// returns a SAFE_PRACTICE_PHRASE (e.g. "你好吗？"). This function detects that
+// and tries the local word-composition engine in gemma-stub.ts instead.
+// Everything runs 100% on-device — no network calls, works in China.
+
+const SAFE_PHRASE_SIGNALS = [
+  "你好吗", "¿Cómo estás", "Comment allez-vous", "Wie geht es",
+  "잘 지내세요", "Come stai", "Como você está", "お元気ですか",
+  "كيف حالك", "आप कैसे हैं",
+];
+
+async function stubWithOnlineFallback(messages: ChatMessage[]): Promise<Record<string, unknown>> {
+  const stubResult = stubGenerateTutorJson(messages);
+  const naturalPhrase = String(stubResult.naturalPhrase || "");
+
+  // Fast path: stub returned a real curated entry — use it as-is.
+  const isSafeFallback = SAFE_PHRASE_SIGNALS.some((s) => naturalPhrase.includes(s));
+  if (!isSafeFallback) return stubResult;
+
+  // Extract the phrase and target language.
+  const systemContent = messages.find((m) => m.role === "system")?.content || "";
+  const userContent   = messages.find((m) => m.role === "user")?.content   || "";
+  const rawPhrase = (
+    userContent.match(/User said:\s*(.+)/i)?.[1]?.trim() ||
+    userContent.split("\n")[0]?.trim() ||
+    userContent.trim()
+  );
+  const phraseToTranslate = stripQuestionWrapper(rawPhrase) || rawPhrase;
+  const targetMatch = (
+    systemContent.match(/learning\s+([A-Za-z\s]+?)\./)?.[1] ||
+    systemContent.match(/into\s+([A-Za-z\s]+?)\./)?.[1] ||
+    "Spanish"
+  ).trim();
+  const targetCode = labelToCode(targetMatch);
+
+  if (!phraseToTranslate) return stubResult;
+
+  // Try local word-composition (100% offline, no network).
+  const composed = composeLocalTranslation(phraseToTranslate, targetCode);
+  if (!composed) {
+    // Can't compose offline — show original phrase so user sees what they typed,
+    // not an unrelated greeting.
+    console.log(`[gemma-engine] offline composition failed for "${phraseToTranslate}" — showing original`);
+    stubResult.naturalPhrase   = phraseToTranslate;
+    stubResult.audioText       = phraseToTranslate;
+    stubResult.literalMeaning  = phraseToTranslate;
+    stubResult.phonetic        = "";
+    stubResult.context         = `Download the AI model in Settings for full offline translation into ${targetMatch}.`;
+    if (stubResult.chunks) {
+      stubResult.chunks = [{ target: phraseToTranslate, english: phraseToTranslate, phonetic: "", tip: "Download the AI model for a full translation of this phrase." }];
+    }
+    return stubResult;
+  }
+
+  console.log(`[gemma-engine] offline composition: "${phraseToTranslate}" → "${composed.phrase}" (${targetCode})`);
+  stubResult.naturalPhrase  = composed.phrase;
+  stubResult.audioText      = composed.phrase;
+  stubResult.literalMeaning = phraseToTranslate;
+  stubResult.phonetic       = composed.phonetic;
+  stubResult.context        = `Here's how to say it in ${targetMatch}.`;
+  if (stubResult.chunks) {
+    stubResult.chunks = composed.chunks;
+  }
+  return stubResult;
+}
+
 // ── Structured tutor output ────────────────────────────────────────────────────
 // HYBRID APPROACH: The real model only does SIMPLE TRANSLATION (tiny prompt).
 // The stub handles phonetics, formatting, and all the structured fields.
@@ -496,7 +563,7 @@ export async function generateTutorJson(
     } else {
       console.log("[gemma-engine] generateTutorJson: USING STUB (model not available)");
     }
-    return stubGenerateTutorJson(messages);
+    return stubWithOnlineFallback(messages);
   }
 
   // ── Extract the user's intent from the messages ────────────────────────────
