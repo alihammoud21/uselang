@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { GemmaModelCard } from "@/components/GemmaModelCard";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SUPPORTED_LANGUAGES } from "@/lib/constants";
@@ -385,6 +386,12 @@ export default function SettingsScreen() {
           >
             <Text style={[S.resetBtnText, { fontWeight: "700", color: "#A93226" }]}>Reset all app data</Text>
           </Pressable>
+        </View>
+
+        {/* ── AI Model ──────────────────────────────────────────────── */}
+        <View style={{ marginTop: 22 }}>
+          <Text style={S.groupLabel}>AI MODEL</Text>
+          <GemmaModelCard />
         </View>
 
         {/* ── Footer ────────────────────────────────────────────────── */}
