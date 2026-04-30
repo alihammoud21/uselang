@@ -2,6 +2,16 @@ import SwiftUI
 
 struct RootView: View {
     private let webURL = URL(string: Bundle.main.object(forInfoDictionaryKey: "UseLangWebURL") as? String ?? "")
+    private let forceOfflineLessons = ProcessInfo.processInfo.arguments.contains("-UseLangForceOfflineLessons")
+    @StateObject private var gemmaModelManager = GemmaModelManager()
+    @StateObject private var gemmaService: GemmaService
+    @StateObject private var networkMonitor = OfflineNetworkMonitor()
+
+    init() {
+        let manager = GemmaModelManager()
+        _gemmaModelManager = StateObject(wrappedValue: manager)
+        _gemmaService = StateObject(wrappedValue: GemmaService(modelManager: manager))
+    }
 
     var body: some View {
         ZStack {
@@ -15,8 +25,11 @@ struct RootView: View {
             )
             .ignoresSafeArea()
 
-            if let webURL {
-                WebContainerView(url: webURL)
+            if forceOfflineLessons || networkMonitor.isOffline {
+                OfflineLessonEntryView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let webURL {
+                WebContainerView(url: webURL, modelManager: gemmaModelManager, gemmaService: gemmaService)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .ignoresSafeArea()
             } else {

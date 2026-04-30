@@ -1,0 +1,111 @@
+{
+  "courses": [
+    {
+      "id": "mandarin-basics",
+      "title": "Mandarin Basics",
+      "languageCode": "zh-CN",
+      "units": [
+        {
+          "id": "unit-greetings",
+          "title": "Unit 1: Greetings",
+          "lessons": [
+            {
+              "id": "lesson-greetings-1",
+              "title": "Lesson 1: Say Hello",
+              "subtitle": "Greet people, hear Mandarin, and speak your first words.",
+              "exercises": [
+                {
+                  "id": "mc-hello",
+                  "type": "multipleChoice",
+                  "prompt": "Hello",
+                  "options": ["你好", "再见", "谢谢"],
+                  "correctAnswers": ["你好"],
+                  "explanation": "你好 means hello."
+                },
+                {
+                  "id": "type-nihao",
+                  "type": "typeAnswer",
+                  "prompt": "Type or write: 你好",
+                  "correctAnswers": ["ni hao", "nihao", "你好"],
+                  "explanation": "Both pinyin and characters count."
+                },
+                {
+                  "id": "listen-xiexie",
+                  "type": "listening",
+                  "prompt": "Tap play. What does this mean?",
+                  "speakText": "谢谢",
+                  "options": ["Goodbye", "Thank you", "Hello"],
+                  "correctAnswers": ["Thank you"],
+                  "explanation": "谢谢 means thank you."
+                },
+                {
+                  "id": "speak-zaijian",
+                  "type": "speak",
+                  "prompt": "Say: 再见",
+                  "speakText": "再见",
+                  "correctAnswers": ["再见", "zai jian", "zaijian"],
+                  "explanation": "再见 means goodbye."
+                },
+                {
+                  "id": "build-wohenhao",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: I am very good",
+                  "tokens": ["我", "很", "好"],
+                  "correctAnswers": ["我 很 好", "我很好"],
+                  "explanation": "我很好 means I am very good."
+                }
+              ]
+            },
+            {
+              "id": "lesson-greetings-2",
+              "title": "Lesson 2: Polite Basics",
+              "subtitle": "Practice yes, no, please, and simple replies.",
+              "exercises": [
+                {
+                  "id": "mc-thanks",
+                  "type": "multipleChoice",
+                  "prompt": "Thank you",
+                  "options": ["不", "谢谢", "请"],
+                  "correctAnswers": ["谢谢"],
+                  "explanation": "谢谢 is thank you."
+                },
+                {
+                  "id": "type-qing",
+                  "type": "typeAnswer",
+                  "prompt": "Type or write: 请",
+                  "correctAnswers": ["qing", "请"],
+                  "explanation": "请 means please."
+                },
+                {
+                  "id": "listen-bu",
+                  "type": "listening",
+                  "prompt": "Tap play. What does this mean?",
+                  "speakText": "不",
+                  "options": ["No", "Please", "Good"],
+                  "correctAnswers": ["No"],
+                  "explanation": "不 means no/not."
+                },
+                {
+                  "id": "speak-qing",
+                  "type": "speak",
+                  "prompt": "Say: 请",
+                  "speakText": "请",
+                  "correctAnswers": ["请", "qing"],
+                  "explanation": "请 is a short, useful polite word."
+                },
+                {
+                  "id": "build-nihao-ma",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: How are you?",
+                  "tokens": ["你", "好", "吗"],
+                  "correctAnswers": ["你 好 吗", "你好吗"],
+                  "explanation": "你好吗 asks how someone is."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -69,7 +69,7 @@ export function MarketingNav({ auth, go }) {
               className="flex items-center gap-3 rounded-[1rem] px-1 py-1 transition"
             >
               <BrandGlyph />
-              <span className="text-[1rem] font-semibold tracking-[-0.03em] text-[#181512]">UseLang</span>
+              <span className="text-[1rem] font-semibold tracking-[-0.03em] text-[#181512]">Lane</span>
             </button>
 
             <nav
@@ -292,7 +292,7 @@ export function MarketingFooter({ go }) {
         </div>
 
         <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-ink/[0.04] pt-6 sm:flex-row">
-          <p className="text-[0.7rem] text-ink/20">&copy; {year} UseLang Inc. All rights reserved.</p>
+          <p className="text-[0.7rem] text-ink/20">&copy; {year} Lane. All rights reserved.</p>
           <p className="text-[0.7rem] text-ink/18">Made with care for language learners everywhere.</p>
         </div>
       </div>

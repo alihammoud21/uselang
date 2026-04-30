@@ -15,6 +15,9 @@
 		DD11223344556677889900DD /* GemmaStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE11223344556677889900EE /* GemmaStatusView.swift */; };
 		FF11223344556677889900FF /* GemmaPrompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1122334455667788990011AA /* GemmaPrompts.swift */; };
 		2233445566778899001122BB /* RuntimeConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3344556677889900112233CC /* RuntimeConfig.swift */; };
+		111111111111111111111101 /* OfflineLessonSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111001 /* OfflineLessonSystem.swift */; };
+		111111111111111111111102 /* OfflineLessonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111002 /* OfflineLessonViews.swift */; };
+		111111111111111111111103 /* OfflineLessons.json in Resources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111003 /* OfflineLessons.json */; };
 		E2624CA6FD10E15DAA0EB318 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 17EA1E3DCA61A342CFA97741 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
@@ -31,6 +34,9 @@
 		EE11223344556677889900EE /* GemmaStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GemmaStatusView.swift; sourceTree = "<group>"; };
 		1122334455667788990011AA /* GemmaPrompts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GemmaPrompts.swift; sourceTree = "<group>"; };
 		3344556677889900112233CC /* RuntimeConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfig.swift; sourceTree = "<group>"; };
+		111111111111111111111001 /* OfflineLessonSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineLessonSystem.swift; sourceTree = "<group>"; };
+		111111111111111111111002 /* OfflineLessonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineLessonViews.swift; sourceTree = "<group>"; };
+		111111111111111111111003 /* OfflineLessons.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = OfflineLessons.json; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -38,6 +44,7 @@
 			isa = PBXGroup;
 			children = (
 				17EA1E3DCA61A342CFA97741 /* Assets.xcassets */,
+				111111111111111111111003 /* OfflineLessons.json */,
 			);
 			name = Resources;
 			path = UseLangIOS/Resources;
@@ -54,6 +61,8 @@
 				EE11223344556677889900EE /* GemmaStatusView.swift */,
 				1122334455667788990011AA /* GemmaPrompts.swift */,
 				3344556677889900112233CC /* RuntimeConfig.swift */,
+				111111111111111111111001 /* OfflineLessonSystem.swift */,
+				111111111111111111111002 /* OfflineLessonViews.swift */,
 			);
 			name = Sources;
 			path = UseLangIOS/Sources;
@@ -143,6 +152,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E2624CA6FD10E15DAA0EB318 /* Assets.xcassets in Resources */,
+				111111111111111111111103 /* OfflineLessons.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -161,6 +171,8 @@
 				DD11223344556677889900DD /* GemmaStatusView.swift in Sources */,
 				FF11223344556677889900FF /* GemmaPrompts.swift in Sources */,
 				2233445566778899001122BB /* RuntimeConfig.swift in Sources */,
+				111111111111111111111101 /* OfflineLessonSystem.swift in Sources */,
+				111111111111111111111102 /* OfflineLessonViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

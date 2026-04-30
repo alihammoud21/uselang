@@ -47,9 +47,7 @@ async function syncToCloud(record, idToken) {
 export function useOfflinePractice({ idToken } = {}) {
   const [items, setItems] = useState([])
   const [ready, setReady] = useState(false)
-  const [isOnline, setIsOnline] = useState(
-    typeof navigator === 'undefined' ? true : navigator.onLine,
-  )
+  const [isOnline, setIsOnline] = useState(true)
 
   const refresh = useCallback(async () => {
     try {
@@ -69,21 +67,55 @@ export function useOfflinePractice({ idToken } = {}) {
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined
-    const handleOnline = () => setIsOnline(true)
-    const handleOffline = () => setIsOnline(false)
+    let cancelled = false
+
+    const probeOnline = async () => {
+      try {
+        const controller = new AbortController()
+        const timeoutId = window.setTimeout(() => controller.abort(), 3000)
+        const response = await fetch(buildApiUrl('/api/health'), {
+          method: 'GET',
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+        window.clearTimeout(timeoutId)
+        if (!cancelled) {
+          setIsOnline(response.ok)
+        }
+      } catch {
+        if (!cancelled) {
+          setIsOnline(false)
+        }
+      }
+    }
+
+    const handleOnline = () => {
+      probeOnline()
+    }
+    const handleOffline = () => {
+      setIsOnline(false)
+    }
     const handlePracticeUpdate = () => refresh()
-    const handleFocus = () => refresh()
+    const handleFocus = () => {
+      refresh()
+      probeOnline()
+    }
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
         refresh()
+        probeOnline()
       }
     }
+    probeOnline()
+    const intervalId = window.setInterval(probeOnline, 15000)
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
     window.addEventListener(PRACTICE_EVENT, handlePracticeUpdate)
     window.addEventListener('focus', handleFocus)
     document.addEventListener('visibilitychange', handleVisibility)
     return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
       window.removeEventListener(PRACTICE_EVENT, handlePracticeUpdate)

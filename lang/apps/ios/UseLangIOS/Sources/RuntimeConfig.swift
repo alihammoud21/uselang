@@ -22,7 +22,6 @@ struct RuntimeConfig {
         let apiBaseString = info["UseLangApiBaseURL"] as? String ?? ""
         let websiteString = info["UseLangWebsiteURL"] as? String ?? "https://uselang.app"
         let appStoreString = info["UseLangAppStoreURL"] as? String ?? ""
-
         let webURL = URL(string: webURLString)!
         let apiBase = URL(string: apiBaseString.isEmpty ? webURLString : apiBaseString)!
         let website = URL(string: websiteString)!

@@ -29,7 +29,7 @@ export function UseLangLogo({ size = 'md', showText = true, className = '' }) {
               lineHeight: 1,
             }}
           >
-            Lang
+            Lane
           </span>
           <div
             className="absolute"
@@ -78,7 +78,7 @@ export function UseLangLogo({ size = 'md', showText = true, className = '' }) {
           className="font-display font-bold tracking-[-0.02em]"
           style={{ fontSize: s.text }}
         >
-          UseLang
+          Lane
         </span>
       ) : null}
     </div>

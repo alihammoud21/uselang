@@ -1,792 +1,831 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { getMinutesRemaining, SUPPORTED_LANGUAGES } from '@shared/languages'
-import { buildCustomLessonBundle, buildLessonBrief, getDailyChallengeBundle } from '@shared/lessons'
-import { AISphere } from '@/components/AISphere'
+import { SUPPORTED_LANGUAGES } from '@shared/languages'
 import { AppShell } from '@/components/AppShell'
-import { useActiveSession } from '@/hooks/use-active-session'
-import { APP_ROUTES } from '@/lib/routes'
-import { buildApiUrl } from '@/lib/runtime'
-import { createActiveSession } from '@/lib/session-builders'
+import { blobToBase64 } from '@/lib/audio'
+import { speakOffline, stopOfflineSpeech } from '@/lib/speech-synthesis'
+import { postTutorSession } from '@/lib/tutor-client'
 
-const SAND = '#c9a97a'
-const SAND_BG = '#f5ede0'
+const COLORS = {
+  paper: '#F3EDE3',
+  paper2: '#EFE8DC',
+  ink: '#111010',
+  ink2: '#2B2623',
+  muted: '#6B625A',
+  muted2: '#8C827A',
+  hair: 'rgba(17,16,16,0.08)',
+  card: '#FBF7F0',
+  amber: '#A85D2E',
+  amberDeep: '#7A3F18',
+  amberSoft: '#C8894F',
+  moss: '#495A3A',
+}
 
-const QUICK_REQUESTS = [
-  { title: 'Café order', prompt: 'How do I order at a cafe?' },
-  { title: 'Bathroom', prompt: 'How do I ask where the bathroom is?' },
-  { title: 'Introductions', prompt: 'How do I introduce myself?' },
-  { title: 'Directions', prompt: 'How do I ask for directions?' },
-  { title: 'Train ticket', prompt: 'How do I buy a train ticket?' },
-  { title: 'Hotel check-in', prompt: 'How do I check into a hotel?' },
+const QUICK_ACTIONS = [
+  { id: 'lookup', label: 'Quick lookup', icon: 'sparkle' },
+  { id: 'camera', label: 'Camera translate', icon: 'camera' },
+  { id: 'saved', label: 'Saved phrases', icon: 'bookmark' },
+  { id: 'shadowing', label: 'Shadowing', icon: 'headphones' },
 ]
 
-async function requestVoiceTurn(body, idToken) {
-  const response = await fetch(buildApiUrl('/api/voice-session'), {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${idToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  })
-  const raw = await response.text()
-  let payload = {}
-  try { payload = raw ? JSON.parse(raw) : {} }
-  catch { payload = { error: raw || 'Unable to build the lesson.' } }
-  if (!response.ok) throw new Error(payload.error || 'Unable to build the lesson.')
-  return payload
+const RECENT_PHRASES = [
+  {
+    es: 'Me pones un cafe con leche?',
+    phonetic: 'meh POH-nes oon kah-FEH kon LEH-cheh',
+    en: 'Can I get a coffee with milk?',
+  },
+  {
+    es: 'La cuenta, por favor.',
+    phonetic: 'lah KWEN-tah por fah-VOR',
+    en: 'The check, please.',
+  },
+  {
+    es: 'Voy en metro.',
+    phonetic: 'boy en MEH-troh',
+    en: 'I am going by metro.',
+  },
+]
+
+const COUNTRY_TAGS = ['ES', 'MX', 'AR', 'CO', 'PE', 'CL', 'VE', 'GT', 'EC', 'CU', 'BO', 'DO']
+
+function getFirstName(profile, auth) {
+  const raw = profile?.displayName || profile?.name || auth.session?.email || ''
+  if (!raw) return 'Ali'
+  if (raw.includes('@')) return raw.split('@')[0].split(/[._-]/)[0] || 'Ali'
+  return raw.trim().split(/\s+/)[0] || 'Ali'
 }
 
-function formatMinutes(m) {
-  if (m <= 0) return '0m left'
-  if (m < 1) return `${Math.ceil(m * 60)}s left`
-  return `${m.toFixed(1)}m left`
+function formatDuration(seconds = 0) {
+  const safe = Math.max(0, seconds)
+  const minutes = Math.floor(safe / 60)
+  const rest = Math.round(safe % 60)
+  return `${minutes}:${String(rest).padStart(2, '0')}`
 }
 
-export function LearningPage({ auth, route }) {
-  const profile = useMemo(
-    () => auth.profile ?? {
-      email: auth.session?.email || '',
-      goal: 'general_interest',
-      languageLearning: 'fr',
-      nativeLanguage: 'en',
-      minutesUsedToday: 0,
-      streakCount: 0,
-      xp: 0,
-      level: 1,
-    },
-    [auth.profile, auth.session?.email],
-  )
-  const activeSession = useActiveSession()
-  const [customRequest, setCustomRequest] = useState('')
-  const [buildingLesson, setBuildingLesson] = useState(false)
-  const [draft, setDraft] = useState(null)
-  const [error, setError] = useState('')
-  const [showUpgrade, setShowUpgrade] = useState(false)
-  const [listenState, setListenState] = useState('idle')
-  const inputRef = useRef(null)
-  const inputRecognitionRef = useRef(null)
-
-  const minutesRemaining = getMinutesRemaining(profile)
-  const continueSession = activeSession.session
-  const langCode = profile.languageLearning || 'fr'
-  const language = useMemo(
-    () => SUPPORTED_LANGUAGES.find((l) => l.code === langCode) || SUPPORTED_LANGUAGES[0],
-    [langCode],
-  )
-  const dailyChallenge = useMemo(
-    () => getDailyChallengeBundle(langCode, profile.goal || 'general_interest'),
-    [langCode, profile.goal],
-  )
-
-  useEffect(() => {
-    return () => inputRecognitionRef.current?.stop?.()
-  }, [])
-
-  function openTrainerWithVoiceIntent() {
-    try {
-      window.sessionStorage.setItem('uselang-trainer-intent', 'voice')
-    } catch {
-      // Ignore storage failures and still allow navigation.
-    }
-    route.navigate(APP_ROUTES.trainer)
-  }
-
-  async function buildLesson(requestText) {
-    const request = String(requestText || '').trim()
-    if (!request) return
-    setBuildingLesson(true)
-    setDraft(null)
-    setError('')
-    try {
-      const active = await auth.getValidSession()
-      const result = await requestVoiceTurn(
-        {
-          mode: 'build-lesson',
-          request,
-          lesson: {
-            languageLearning: langCode,
-            goal: profile.goal,
-            correctionIntensity: profile.correctionIntensity,
-            confidenceLevel: profile.confidenceLevel,
-          },
-        },
-        active.idToken,
-      )
-      if (result.profileSnapshot) auth.applyServerProfile(result.profileSnapshot)
-      setDraft({ request, lesson: result.customLesson, lessonBrief: result.lessonBrief, openingTurn: result })
-      setCustomRequest('')
-    } catch (buildError) {
-      const fallbackLesson = buildCustomLessonBundle(langCode, request, profile.goal || 'general_interest')
-      if (fallbackLesson) {
-        setDraft({
-          request,
-          lesson: fallbackLesson,
-          lessonBrief: buildLessonBrief(fallbackLesson),
-          openingTurn: null,
-          localFallback: true,
-        })
-        setCustomRequest('')
-        setError('')
-      } else {
-        setError(buildError.message)
-      }
-    } finally {
-      setBuildingLesson(false)
+function languageCopy(language) {
+  if (language.code === 'es') {
+    return {
+      moduleLabel: 'Conversation · Cafe',
+      titleStart: 'Ordering',
+      titleAccent: 'el desayuno',
+      titleEnd: 'en Madrid.',
+      spoken: 'Quisiera un cafe con leche y una tostada, por favor.',
+      reach: 'Spanish unlocks',
+      countries: '21 countries',
+      speakers: '560M',
+      accents: '5 accents · 17 dialects · 2nd most spoken',
     }
   }
 
-  function acceptDraft() {
-    if (!draft?.lesson) return
-    activeSession.save(createActiveSession(draft.lesson, { kind: 'custom', request: draft.request, turn: draft.openingTurn }))
-    route.navigate(APP_ROUTES.trainer)
+  return {
+    moduleLabel: 'Conversation · Travel',
+    titleStart: 'Getting comfortable with',
+    titleAccent: language.label,
+    titleEnd: 'in real life.',
+    spoken: `Let's keep practicing ${language.label} naturally.`,
+    reach: `${language.label} unlocks`,
+    countries: 'new places',
+    speakers: 'real people',
+    accents: 'Accents · dialects · local phrasing',
+  }
+}
+
+function Icon({ name, size = 22, stroke = 1.6 }) {
+  const common = {
+    width: size,
+    height: size,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: stroke,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': true,
   }
 
-  function handleVoiceRequest() {
-    const Recognition =
-      typeof window === 'undefined' ? null : window.SpeechRecognition || window.webkitSpeechRecognition
+  if (name === 'settings') return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.6 1.6 0 00.3 1.8l.1.1a1.9 1.9 0 11-2.7 2.7l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5v.2a1.9 1.9 0 11-3.8 0v-.2a1.6 1.6 0 00-1-1.5 1.6 1.6 0 00-1.8.3l-.1.1a1.9 1.9 0 11-2.7-2.7l.1-.1A1.6 1.6 0 005 15a1.6 1.6 0 00-1.5-1H3.3a1.9 1.9 0 110-3.8h.2A1.6 1.6 0 005 9.2a1.6 1.6 0 00-.3-1.8l-.1-.1a1.9 1.9 0 112.7-2.7l.1.1a1.6 1.6 0 001.8.3 1.6 1.6 0 001-1.5v-.2a1.9 1.9 0 113.8 0v.2a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a1.9 1.9 0 112.7 2.7l-.1.1a1.6 1.6 0 00-.3 1.8 1.6 1.6 0 001.5 1h.2a1.9 1.9 0 110 3.8h-.2A1.6 1.6 0 0019.4 15z" /></svg>
+  if (name === 'flame') return <svg {...common}><path d="M12 22c3.8-1 6-3.6 6-7.2 0-2.9-1.7-5.1-3.5-6.9.1 2.2-.7 3.5-2 4.2.2-3.2-1.3-6.2-4.1-8.1.4 3.8-2.4 5.7-2.4 9.8 0 3.6 2.3 6.7 6 8.2z" /></svg>
+  if (name === 'bolt') return <svg {...common}><path d="M13 2L4 14h7l-1 8 10-13h-7l1-7z" /></svg>
+  if (name === 'trophy') return <svg {...common}><path d="M8 21h8" /><path d="M12 17v4" /><path d="M7 4h10v4a5 5 0 01-10 0V4z" /><path d="M7 6H4a2 2 0 002 4h1" /><path d="M17 6h3a2 2 0 01-2 4h-1" /></svg>
+  if (name === 'play') return <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7L8 5z" /></svg>
+  if (name === 'pause') return <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden="true"><path d="M7 5h4v14H7V5zm6 0h4v14h-4V5z" /></svg>
+  if (name === 'sparkle') return <svg {...common}><path d="M12 3l1.6 5.1L19 10l-5.4 1.9L12 17l-1.6-5.1L5 10l5.4-1.9L12 3z" /><path d="M19 15l.7 2.2L22 18l-2.3.8L19 21l-.7-2.2L16 18l2.3-.8L19 15z" /></svg>
+  if (name === 'camera') return <svg {...common}><path d="M4 8a2 2 0 012-2h2l1.5-2h5L16 6h2a2 2 0 012 2v9a2 2 0 01-2 2H6a2 2 0 01-2-2V8z" /><circle cx="12" cy="13" r="3.5" /></svg>
+  if (name === 'bookmark') return <svg {...common}><path d="M6 4a2 2 0 012-2h8a2 2 0 012 2v18l-6-3-6 3V4z" /></svg>
+  if (name === 'headphones') return <svg {...common}><path d="M4 14v-2a8 8 0 1116 0v2" /><path d="M4 14h3v6H5a1 1 0 01-1-1v-5z" /><path d="M20 14h-3v6h2a1 1 0 001-1v-5z" /></svg>
+  if (name === 'mic') return <svg {...common}><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0014 0" /><path d="M12 18v3" /></svg>
+  if (name === 'arrow') return <svg {...common}><path d="M5 12h14" /><path d="M13 6l6 6-6 6" /></svg>
+  return null
+}
 
-    if (!Recognition) {
-      setError('Voice requests are not available in this browser.')
-      return
-    }
-
-    if (listenState === 'listening' && inputRecognitionRef.current) {
-      inputRecognitionRef.current.stop()
-      setListenState('idle')
-      return
-    }
-
-    const recognition = new Recognition()
-    recognition.lang = 'en-US'
-    recognition.interimResults = true
-    recognition.maxAlternatives = 1
-    recognition.onstart = () => setListenState('listening')
-    recognition.onend = () => setListenState('idle')
-    recognition.onerror = () => {
-      setListenState('idle')
-      setError('Could not capture your request.')
-    }
-    recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map((result) => result[0]?.transcript || '')
-        .join(' ')
-        .trim()
-      if (transcript) setCustomRequest(transcript)
-      const last = event.results[event.results.length - 1]
-      if (last?.isFinal && transcript) {
-        recognition.stop()
-        buildLesson(transcript)
-      }
-    }
-
-    inputRecognitionRef.current = recognition
-    recognition.start()
-  }
-
-  const firstName = (profile.email || '').split('@')[0] || 'there'
-  const limitMins = profile.plan === 'pro' ? 30 : profile.plan === 'starter' ? 15 : 10
-  const progressPct = Math.round(Math.max(0, Math.min(100, ((limitMins - minutesRemaining) / limitMins) * 100)))
-  const isPro = profile.plan === 'pro' || profile.plan === 'paid'
-
+function Serif({ children, italic = false, className = '', style = {} }) {
   return (
-    <AppShell auth={auth} route={route} section="home">
-      {/* Slim usage bar */}
-      <div className="px-5 pt-[calc(env(safe-area-inset-top)+1.35rem)]">
-        <div className="flex items-center justify-between text-[0.68rem] font-medium text-ink/30">
-          <span className="tabular-nums">{progressPct}%</span>
-          <span className="font-semibold text-ink/40">{language.label}</span>
-          <span className="tabular-nums">{formatMinutes(minutesRemaining)}</span>
-        </div>
-        <div className="mt-1.5 h-[2px] overflow-hidden rounded-full bg-black/[0.05]">
-          <motion.div
-            className="h-full rounded-full"
-            style={{ background: SAND }}
-            animate={{ width: `${Math.max(3, progressPct)}%` }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          />
-        </div>
-      </div>
-
-      <div className="px-5 pb-8">
-        {/* Greeting */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-          className="mt-6"
-        >
-          <p className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]" style={{ color: SAND }}>Lane</p>
-          <h1 className="mt-1.5 text-[2rem] font-bold leading-[1.1] tracking-[-0.04em] text-ink">
-            Hello, <span style={{ color: SAND }}>{firstName}</span>
-          </h1>
-          <p className="mt-1 text-[0.86rem] text-ink/38">
-            What do you want to do today?
-          </p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.08 }}
-          className="mt-4 grid grid-cols-2 gap-2.5"
-        >
-          <LaunchStrip
-            eyebrow="Continue"
-            title={continueSession ? continueSession.lesson?.scenarioMeta?.title || 'Last session' : 'Free practice'}
-            detail={continueSession ? `Step ${(continueSession.stepIndex || 0) + 1} waiting` : 'Open the phrase studio'}
-            onClick={() => route.navigate(APP_ROUTES.trainer)}
-          />
-          <LaunchStrip
-            eyebrow="Today"
-            title={dailyChallenge.scenarioMeta.tagline}
-            detail={`${dailyChallenge.steps.length} quick lines`}
-            onClick={() => {
-              activeSession.save(createActiveSession(dailyChallenge, { kind: 'daily', request: 'Daily speaking challenge' }))
-              route.navigate(APP_ROUTES.trainer)
-            }}
-          />
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.12 }}
-          className="mt-6"
-        >
-          <div className="rounded-[2rem] bg-white/82 px-5 py-6 text-center" style={{ boxShadow: '0 20px 54px -32px rgba(120,95,60,0.16)' }}>
-            <div
-              className="pointer-events-none absolute left-1/2 top-0 h-32 w-64 -translate-x-1/2 rounded-full opacity-60 blur-3xl"
-              style={{ background: `radial-gradient(circle, ${SAND_BG}, transparent 70%)` }}
-            />
-            <div className="relative flex justify-center">
-              <AISphere
-                state={listenState === 'listening' ? 'listening' : 'idle'}
-                size={188}
-                tone="accent"
-                disabled={buildingLesson}
-                onTap={openTrainerWithVoiceIntent}
-                label=""
-                hideLabel
-              />
-            </div>
-            <button
-              type="button"
-              onClick={openTrainerWithVoiceIntent}
-              className="mt-5 inline-flex min-w-[14rem] items-center justify-center rounded-[1.25rem] bg-[#1a1714] px-6 py-3.5 text-[0.92rem] font-semibold text-white shadow-[0_18px_40px_-24px_rgba(26,23,20,0.35)] transition active:scale-[0.98]"
-            >
-              {continueSession ? 'Continue session' : 'Start speaking'}
-            </button>
-            <p className="mt-2 text-[0.76rem] text-ink/38">
-              {continueSession
-                ? `${continueSession.lesson?.scenarioMeta?.title || 'Pick up where you left off'} · Step ${(continueSession.stepIndex || 0) + 1}`
-                : 'Open the speaking coach, then type or talk.'}
-            </p>
-            <div className="mt-5 grid grid-cols-2 gap-2.5">
-              <CompactAction
-                title="Free practice"
-                subtitle="Type or say any phrase"
-                onClick={() => route.navigate(APP_ROUTES.trainer)}
-                icon={<MicGlyph />}
-              />
-              <CompactAction
-                title="Saved phrases"
-                subtitle="Replay offline"
-                onClick={() => route.navigate(APP_ROUTES.downloads)}
-                icon={<DownloadGlyph />}
-              />
-            </div>
-            <div className="mt-4 flex items-center justify-center gap-2 text-[0.72rem] text-ink/34">
-              <MiniStatus icon={<FireGlyph />} label={`${profile.streakCount || 0} day streak`} />
-              <span>·</span>
-              <MiniStatus icon={<BoltGlyph />} label={`${profile.xp || 0} XP`} />
-              <span>·</span>
-              <MiniStatus icon={<LevelGlyph />} label={`Level ${profile.level || 1}`} />
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Build a lesson */}
-        <motion.section
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="mt-4 rounded-[1.75rem] bg-white p-4"
-          style={{ boxShadow: '0 12px 36px -18px rgba(201,169,122,0.18), 0 1px 3px rgba(15,20,25,0.04)' }}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span
-                className="flex h-7 w-7 items-center justify-center rounded-full"
-                style={{ background: `${SAND}18` }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={SAND} strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </span>
-              <p className="text-[0.78rem] font-semibold text-ink">Build a lesson</p>
-            </div>
-            <button
-              type="button"
-              onClick={handleVoiceRequest}
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition ${
-                listenState === 'listening' ? 'bg-[#1a1714] text-white' : 'bg-black/[0.04] text-ink/46'
-              }`}
-            >
-              <MicGlyph />
-            </button>
-          </div>
-          <p className="mt-1.5 text-[0.8rem] text-ink/40">
-            Tell Lane what you need to say. Type it or say it in English.
-          </p>
-
-          <div className="mt-3 flex gap-2">
-            <input
-              ref={inputRef}
-              value={customRequest}
-              onChange={(e) => setCustomRequest(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && customRequest.trim() && buildLesson(customRequest)}
-              placeholder="e.g. I need to ask where the bathroom is"
-              className="flex-1 rounded-[1rem] bg-black/[0.03] px-3.5 py-2.5 text-[0.86rem] font-medium text-ink placeholder:text-ink/22"
-            />
-            <button
-              type="button"
-              onClick={() => buildLesson(customRequest)}
-              disabled={!customRequest.trim() || buildingLesson}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition active:scale-95 disabled:opacity-30"
-              style={{ background: '#1a1714', boxShadow: `0 4px 14px rgba(26,23,20,0.28)` }}
-            >
-              {buildingLesson ? (
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 0.9, repeat: Infinity, ease: 'linear' }}
-                  className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white"
-                />
-              ) : (
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13" />
-                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
-                </svg>
-              )}
-            </button>
-          </div>
-
-          <SuggestionPills onRequest={buildLesson} isLoading={buildingLesson} />
-        </motion.section>
-
-        {/* Draft preview */}
-        <AnimatePresence>
-          {draft?.lesson ? (
-            <motion.section
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="mt-3 rounded-[1.6rem] bg-white p-4"
-              style={{ boxShadow: `0 14px 38px -24px rgba(201,169,122,0.2)` }}
-            >
-              <div className="flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full" style={{ background: `${SAND}18` }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={SAND} strokeWidth="2.5" strokeLinecap="round">
-                    <path d="M5 12l5 5L20 7" />
-                  </svg>
-                </span>
-                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.06em]" style={{ color: SAND }}>
-                  {draft.localFallback ? 'Plan ready locally' : 'Plan ready'}
-                </p>
-              </div>
-              <h2 className="mt-2 text-[1.08rem] font-bold tracking-[-0.03em] text-ink">
-                {draft.lessonBrief?.title || draft.lesson.scenarioMeta.title}
-              </h2>
-              <p className="mt-1 text-[0.78rem] leading-snug text-ink/42">
-                {draft.lessonBrief?.sessionFocus || draft.lesson.scenarioMeta.tagline}
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <MiniMeta>{draft.lessonBrief?.estimatedMinutes || draft.lesson.scenarioMeta.estimatedMinutes} min</MiniMeta>
-                <MiniMeta>{draft.lesson.steps.length} steps</MiniMeta>
-                {draft.lessonBrief?.soundToWatch ? <MiniMeta>Sound focus</MiniMeta> : null}
-              </div>
-              <div className="mt-3 rounded-[1.1rem] bg-black/[0.025] p-3.5">
-                <p className="text-[0.66rem] font-semibold uppercase tracking-[0.04em] text-ink/26">
-                  Outcome
-                </p>
-                <p className="mt-1 text-[0.8rem] leading-snug text-ink/56">
-                  {draft.lessonBrief?.outcome || draft.lesson.scenarioMeta.completionLine}
-                </p>
-              </div>
-              <div className="mt-3 space-y-2.5">
-                {(draft.lessonBrief?.lines || []).slice(0, 3).map((line) => (
-                  <div key={line.id} className="rounded-[1.05rem] bg-[#fbfaf8] px-3.5 py-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.05em]" style={{ color: SAND }}>
-                        Step {line.order}
-                      </p>
-                      {line.focus ? (
-                        <span className="text-[0.68rem] font-medium text-ink/30">{line.focus}</span>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-[0.88rem] font-semibold leading-snug text-ink">{line.targetText}</p>
-                    {line.englishMeaning ? (
-                      <p className="mt-1 text-[0.76rem] leading-snug text-ink/42">{line.englishMeaning}</p>
-                    ) : null}
-                    {line.whenToUseIt ? (
-                      <p className="mt-1.5 text-[0.7rem] leading-snug text-ink/34">Use it when: {line.whenToUseIt}</p>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button type="button" onClick={acceptDraft} className="btn-warm flex-1 !py-2.5 !text-[0.8rem]">
-                  Accept plan
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setCustomRequest(draft.request); setDraft(null); inputRef.current?.focus() }}
-                  className="btn-ghost flex-1 !py-2.5 !text-[0.8rem]"
-                >
-                  Edit
-                </button>
-              </div>
-            </motion.section>
-          ) : null}
-        </AnimatePresence>
-
-        {error ? (
-          <motion.div
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-3 rounded-[1rem] bg-danger/8 px-4 py-2.5 text-[0.8rem] text-danger"
-          >
-            {error}
-          </motion.div>
-        ) : null}
-
-        {/* Upgrade nudge */}
-        {!isPro ? (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.28 }}
-            className="mt-3"
-          >
-            <UpgradeNudge minutesRemaining={minutesRemaining} onUpgrade={() => setShowUpgrade(true)} />
-          </motion.div>
-        ) : null}
-      </div>
-
-      <AnimatePresence>
-        {showUpgrade ? <UpgradeSheetInline onClose={() => setShowUpgrade(false)} /> : null}
-      </AnimatePresence>
-    </AppShell>
-  )
-}
-
-/* ─── Stat pill ─── */
-function StatPill({ value, label, icon }) {
-  return (
-    <div
-      className="flex flex-1 items-center gap-2 rounded-[1.1rem] bg-white px-3 py-2.5"
-      style={{ boxShadow: '0 2px 12px -6px rgba(15,20,25,0.08)' }}
+    <span
+      className={className}
+      style={{
+        fontFamily: '"Fraunces", "Instrument Serif", serif',
+        fontVariationSettings: '"opsz" 72',
+        fontStyle: italic ? 'italic' : 'normal',
+        ...style,
+      }}
     >
-      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/[0.03] text-[#c9a97a]">{icon}</span>
-      <div>
-        <p className="text-[0.95rem] font-bold tracking-[-0.02em] text-ink leading-none">{value}</p>
-        <p className="mt-0.5 text-[0.56rem] font-medium uppercase tracking-[0.04em] text-ink/28">{label}</p>
-      </div>
-    </div>
-  )
-}
-
-function MiniMeta({ children }) {
-  return (
-    <span className="rounded-full bg-black/[0.04] px-3 py-1.5 text-[0.68rem] font-medium text-ink/45">
       {children}
     </span>
   )
 }
 
-function CompactAction({ title, subtitle, icon, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-[1.2rem] bg-[#fbfaf8] px-4 py-3 text-left transition active:scale-[0.98]"
-    >
-      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/[0.03] text-[#c9a97a]">{icon}</span>
-      <p className="mt-3 text-[0.82rem] font-semibold text-ink">{title}</p>
-      <p className="mt-0.5 text-[0.7rem] text-ink/38">{subtitle}</p>
-    </button>
-  )
-}
-
-function LaunchStrip({ eyebrow, title, detail, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-[1.3rem] bg-white/78 px-4 py-3 text-left transition active:scale-[0.985]"
-      style={{ boxShadow: '0 12px 28px -24px rgba(120,95,60,0.2)' }}
-    >
-      <p className="text-[0.64rem] font-semibold uppercase tracking-[0.06em] text-ink/26">{eyebrow}</p>
-      <p className="mt-1 text-[0.86rem] font-semibold leading-snug text-ink">{title}</p>
-      <p className="mt-1 text-[0.72rem] text-ink/36">{detail}</p>
-    </button>
-  )
-}
-
-function MiniStatus({ icon, label }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="text-[#c9a97a]">{icon}</span>
-      <span>{label}</span>
-    </span>
-  )
-}
-
-function FireGlyph() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3c1.8 2 2.8 4 2.8 6.1A4.8 4.8 0 018.6 14c0-1.7.7-3.2 2-4.4 1.1-1.1 1.7-2.3 1.4-6.6z" />
-      <path d="M9 15.4a3.4 3.4 0 106 2.6c0-1.4-.8-2.5-1.9-3.6-.9-.8-1.3-1.6-1.1-3.5-1.6 1.2-3 2.6-3 4.5z" />
-    </svg>
-  )
-}
-
-function BoltGlyph() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M13 2L5 14h5l-1 8 8-12h-5l1-8z" />
-    </svg>
-  )
-}
-
-function LevelGlyph() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 21h8" />
-      <path d="M12 17v4" />
-      <path d="M7 4h10v3a5 5 0 01-10 0V4z" />
-      <path d="M7 6H5a2 2 0 000 4h2" />
-      <path d="M17 6h2a2 2 0 010 4h-2" />
-    </svg>
-  )
-}
-
-function MicGlyph() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="9" y="3" width="6" height="11" rx="3" />
-      <path d="M5 11a7 7 0 0014 0" />
-      <path d="M12 18v3" />
-    </svg>
-  )
-}
-
-function DownloadGlyph() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
-  )
-}
-
-/* ─── Action card ─── */
-function ActionCard({ title, subtitle, color, icon, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-[1.25rem] bg-white p-4 text-left transition active:scale-[0.98]"
-      style={{ boxShadow: '0 2px 12px -6px rgba(15,20,25,0.08)' }}
-    >
-      <span
-        className="flex h-8 w-8 items-center justify-center rounded-full"
-        style={{ background: color + '15', color }}
-      >
-        {icon}
-      </span>
-      <p className="mt-3 text-[0.82rem] font-semibold text-ink">{title}</p>
-      <p className="mt-0.5 text-[0.68rem] text-ink/36">{subtitle}</p>
-    </button>
-  )
-}
-
-/* ─── Suggestion pills ─── */
-function SuggestionPills({ onRequest, isLoading }) {
-  const [active, setActive] = useState(0)
-  const timer = useRef(null)
-
-  useEffect(() => {
-    timer.current = setInterval(() => setActive((i) => (i + 1) % QUICK_REQUESTS.length), 3000)
-    return () => clearInterval(timer.current)
-  }, [])
-
-  return (
-    <div className="mt-3">
-      <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
-        {QUICK_REQUESTS.map((item, i) => (
-          <motion.button
-            key={item.prompt}
-            type="button"
-            onClick={() => { clearInterval(timer.current); setActive(i) }}
-            animate={{
-              backgroundColor: i === active ? SAND + '14' : 'rgba(255,255,255,0.9)',
-              borderColor: i === active ? SAND + '40' : 'rgba(15,20,25,0.06)',
-            }}
-            transition={{ type: 'spring', stiffness: 380, damping: 26 }}
-            className="flex shrink-0 rounded-full border px-3 py-1.5 text-[0.72rem] font-medium"
-            style={{ color: i === active ? SAND : 'rgba(15,20,25,0.45)' }}
-          >
-            {item.title}
-          </motion.button>
-        ))}
-      </div>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={active}
-          initial={{ opacity: 0, y: 5 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.2 }}
-          className="mt-2 flex items-center justify-between rounded-[1.1rem] px-3.5 py-3"
-          style={{ background: SAND + '10' }}
-        >
-          <p className="text-[0.8rem] font-medium text-ink/65">{QUICK_REQUESTS[active].prompt}</p>
-          <button
-            type="button"
-            onClick={() => !isLoading && onRequest(QUICK_REQUESTS[active].prompt)}
-            disabled={isLoading}
-            className="ml-2 shrink-0 text-[0.74rem] font-semibold disabled:opacity-40"
-            style={{ color: SAND }}
-          >
-            {isLoading ? '...' : 'Use →'}
-          </button>
-        </motion.div>
-      </AnimatePresence>
-    </div>
-  )
-}
-
-/* ─── Upgrade nudge ─── */
-function UpgradeNudge({ minutesRemaining, onUpgrade }) {
-  return (
-    <button
-      type="button"
-      onClick={onUpgrade}
-      className="upgrade-card w-full rounded-[1.6rem] p-4 text-left transition active:scale-[0.99]"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[0.58rem] font-bold uppercase tracking-[0.08em] text-white">
-            {minutesRemaining <= 1 ? 'Almost out' : 'Upgrade'}
-          </span>
-          <p className="mt-2 text-[1.02rem] font-bold tracking-[-0.02em] text-white">Unlock unlimited speaking</p>
-          <p className="mt-0.5 text-[0.74rem] text-white/65">No daily cap. Offline AI. All features.</p>
-        </div>
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-white">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-            <path d="M5 12h14M12 5l7 7-7 7" />
-          </svg>
-        </span>
-      </div>
-      <div className="mt-3 flex gap-2">
-        {['Unlimited', '7-day trial', 'Offline AI'].map((f) => (
-          <span key={f} className="upgrade-card-frost rounded-full px-2.5 py-1 text-[0.62rem] font-medium text-white">{f}</span>
-        ))}
-      </div>
-    </button>
-  )
-}
-
-/* ─── Upgrade sheet ─── */
-function UpgradeSheetInline({ onClose }) {
-  const PLANS = [
-    { id: 'monthly', label: 'Monthly', price: '$9.99', period: '/month', badge: null },
-    { id: 'yearly', label: 'Yearly', price: '$59.99', period: '/year', badge: 'Save 50%' },
-  ]
-  const [selected, setSelected] = useState('yearly')
-
+function StatCard({ icon, label, value, active = false }) {
   return (
     <motion.div
+      whileTap={{ scale: 0.98 }}
+      className="min-w-0 rounded-[18px] px-3 py-3"
+      style={{
+        background: active ? COLORS.ink : COLORS.card,
+        color: active ? COLORS.paper : COLORS.ink,
+        border: `0.5px solid ${active ? 'rgba(255,255,255,0.12)' : COLORS.hair}`,
+        boxShadow: '0 1px 2px rgba(17,16,16,0.04), 0 6px 16px rgba(17,16,16,0.04), inset 0 1px 0 rgba(255,255,255,0.75)',
+      }}
+    >
+      <div className="flex items-center gap-1.5" style={{ color: active ? COLORS.amberSoft : COLORS.amberDeep }}>
+        <Icon name={icon} size={15} stroke={1.55} />
+        <p className="text-[9.5px] font-semibold uppercase tracking-[0.15em]">{label}</p>
+      </div>
+      <p className="mt-1.5 leading-none">
+        <Serif className="text-[26px]" style={{ fontWeight: 380 }}>{value}</Serif>
+      </p>
+    </motion.div>
+  )
+}
+
+function ContinueHero({ lesson, isPlaying, onPlay, onViewPlan }) {
+  const progress = lesson.elapsedSec / lesson.durationSec
+
+  return (
+    <section className="px-[22px]">
+      <motion.div
+        whileTap={{ scale: 0.992 }}
+        className="relative overflow-hidden rounded-[24px] px-5 py-5"
+        style={{
+          background: 'linear-gradient(165deg, #2A1E14 0%, #3B2A1C 45%, #5B3A1E 100%)',
+          boxShadow: '0 20px 40px rgba(42,30,20,0.35), inset 0 1px 0 rgba(255,255,255,0.1)',
+          color: COLORS.paper,
+        }}
+      >
+        <div className="absolute -right-10 -top-12 h-36 w-36 rounded-full" style={{ background: 'radial-gradient(circle, rgba(232,166,93,0.38), transparent 68%)' }} />
+        <div className="absolute inset-0 opacity-[0.18]" style={{ backgroundImage: 'radial-gradient(rgba(255,255,255,0.18) 0.6px, transparent 0.6px)', backgroundSize: '5px 5px', mixBlendMode: 'overlay' }} />
+
+        <div className="relative">
+          <p className="text-[10.5px] font-semibold uppercase tracking-[0.16em]" style={{ color: COLORS.amberSoft }}>
+            {lesson.moduleLabel}
+          </p>
+          <h2 className="mt-4 max-w-[17rem] text-[26px] leading-[1.02]">
+            <Serif style={{ fontWeight: 390 }}>{lesson.titleStart} </Serif>
+            <Serif italic style={{ color: COLORS.amberSoft, fontWeight: 340 }}>{lesson.titleAccent}</Serif>
+            <Serif style={{ fontWeight: 390 }}> {lesson.titleEnd}</Serif>
+          </h2>
+
+          <div className="mt-6 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onPlay}
+              className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full text-white"
+              style={{
+                background: 'linear-gradient(145deg, rgba(255,255,255,0.34), rgba(255,255,255,0.12))',
+                border: '0.5px solid rgba(255,255,255,0.38)',
+                boxShadow: '0 12px 28px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.45)',
+                backdropFilter: 'blur(14px) saturate(160%)',
+                WebkitBackdropFilter: 'blur(14px) saturate(160%)',
+              }}
+              aria-label={isPlaying ? 'Pause lesson' : 'Play lesson'}
+            >
+              <Icon name={isPlaying ? 'pause' : 'play'} size={20} />
+            </button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3 text-[12px] font-medium" style={{ color: 'rgba(243,237,227,0.72)' }}>
+                <span>{lesson.totalPhrases} phrases · {Math.round(lesson.durationSec / 60)} min</span>
+                <span>{formatDuration(lesson.elapsedSec)} / {formatDuration(lesson.durationSec)}</span>
+              </div>
+              <div className="mt-2 h-[3px] overflow-hidden rounded-full bg-white/12">
+                <motion.div
+                  className="h-full rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.round(progress * 100)}%` }}
+                  transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+                  style={{ background: 'linear-gradient(90deg, #E8A65D, #F3C98A)' }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onViewPlan}
+            className="mt-5 flex h-10 w-full items-center justify-center rounded-full text-[13px] font-semibold"
+            style={{
+              background: 'rgba(255,255,255,0.12)',
+              color: COLORS.paper,
+              border: '0.5px solid rgba(255,255,255,0.18)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)',
+            }}
+          >
+            View plan
+          </button>
+        </div>
+      </motion.div>
+    </section>
+  )
+}
+
+function QuickActions({ onAction }) {
+  return (
+    <section className="grid grid-cols-4 gap-2 px-[14px]">
+      {QUICK_ACTIONS.map((action) => (
+        <button key={action.id} type="button" onClick={() => onAction(action.id)} className="group flex min-w-0 flex-col items-center gap-2">
+          <motion.span
+            whileTap={{ scale: 0.94 }}
+            className="flex h-12 w-12 items-center justify-center rounded-[14px]"
+            style={{
+              background: COLORS.card,
+              color: COLORS.amberDeep,
+              border: `0.5px solid ${COLORS.hair}`,
+              boxShadow: '0 1px 2px rgba(17,16,16,0.04), 0 6px 16px rgba(17,16,16,0.04), inset 0 1px 0 rgba(255,255,255,0.9)',
+            }}
+          >
+            <Icon name={action.icon} size={21} stroke={1.45} />
+          </motion.span>
+          <span className="text-center text-[10.5px] font-medium leading-tight" style={{ color: COLORS.muted }}>
+            {action.label}
+          </span>
+        </button>
+      ))}
+    </section>
+  )
+}
+
+function DailyChallenge({ challenge, onAttempt }) {
+  return (
+    <section className="px-[22px]">
+      <div
+        className="rounded-[22px] p-4"
+        style={{
+          background: COLORS.card,
+          border: `0.5px solid ${COLORS.hair}`,
+          boxShadow: '0 1px 2px rgba(17,16,16,0.04), 0 6px 16px rgba(17,16,16,0.04), inset 0 1px 0 rgba(255,255,255,0.9)',
+        }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ color: COLORS.amber }}>Daily challenge</p>
+          <div className="flex items-center gap-1">
+            {Array.from({ length: 5 }, (_, index) => (
+              <span
+                key={index}
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: index < challenge.streakDots ? COLORS.amber : 'rgba(17,16,16,0.12)' }}
+              />
+            ))}
+          </div>
+        </div>
+        <p className="mt-5 text-[10.5px] font-semibold uppercase tracking-[0.14em]" style={{ color: COLORS.muted2 }}>
+          Trabalenguas · Tongue twister
+        </p>
+        <p className="mt-2 text-[21px] leading-[1.14]" style={{ color: COLORS.ink }}>
+          <Serif style={{ fontWeight: 390 }}>{challenge.textEs}</Serif>
+        </p>
+        <p className="mt-4 font-mono text-[11px] leading-relaxed" style={{ color: COLORS.amberDeep }}>
+          {challenge.phonetic.map((part, index) => (
+            <span key={`${part}-${index}`}>
+              {index > 0 ? <span style={{ color: 'rgba(107,98,90,0.38)' }}> · </span> : null}
+              {part}
+            </span>
+          ))}
+        </p>
+        <div className="my-4 h-px" style={{ background: COLORS.hair }} />
+        <p className="text-[14px] italic leading-snug" style={{ color: COLORS.muted }}>
+          {challenge.textEn}
+        </p>
+        <button
+          type="button"
+          onClick={onAttempt}
+          className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-full px-5 text-[14px] font-semibold"
+          style={{
+            background: COLORS.ink,
+            color: COLORS.paper,
+            boxShadow: '0 6px 16px rgba(17,16,16,0.2), inset 0 1px 0 rgba(255,255,255,0.15)',
+          }}
+        >
+          <Icon name="mic" size={17} stroke={1.8} />
+          <span>Tap to attempt</span>
+          <Icon name="arrow" size={16} stroke={1.8} />
+        </button>
+      </div>
+    </section>
+  )
+}
+
+function LanguageReach({ copy }) {
+  return (
+    <section className="px-[22px]">
+      <div
+        className="rounded-[22px] p-4"
+        style={{
+          background: COLORS.card,
+          border: `0.5px solid ${COLORS.hair}`,
+          boxShadow: '0 1px 2px rgba(17,16,16,0.04), 0 6px 16px rgba(17,16,16,0.04), inset 0 1px 0 rgba(255,255,255,0.9)',
+        }}
+      >
+        <p className="text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ color: COLORS.moss }}>Your reach</p>
+        <h2 className="mt-3 text-[22px] leading-[1.12]" style={{ color: COLORS.ink }}>
+          <Serif style={{ fontWeight: 390 }}>{copy.reach} </Serif>
+          <Serif italic style={{ fontWeight: 340 }}>{copy.countries}</Serif>
+          <Serif style={{ fontWeight: 390 }}> and </Serif>
+          <span className="font-semibold">{copy.speakers}</span>
+          <Serif style={{ fontWeight: 390 }}> speakers.</Serif>
+        </h2>
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {COUNTRY_TAGS.map((tag, index) => (
+            <span
+              key={tag}
+              className="rounded-full px-2.5 py-1 font-mono text-[10px] font-semibold"
+              style={{
+                background: index === 0 ? COLORS.amber : 'transparent',
+                color: index === 0 ? COLORS.paper : COLORS.muted,
+                border: `0.5px solid ${index === 0 ? COLORS.amber : COLORS.hair}`,
+              }}
+            >
+              {tag}
+            </span>
+          ))}
+          <span className="px-1.5 py-1 text-[10.5px] font-medium" style={{ color: COLORS.muted2 }}>+ 9 more</span>
+        </div>
+        <div className="mt-4 h-px" style={{ background: COLORS.hair }} />
+        <p className="mt-3 text-[13px]" style={{ color: COLORS.muted }}>
+          <Serif style={{ fontWeight: 390 }}>{copy.accents}</Serif>
+        </p>
+      </div>
+    </section>
+  )
+}
+
+function RecentPhrases({ phrases, onSelect }) {
+  return (
+    <section>
+      <div className="mb-3 flex items-center justify-between px-[22px]">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ color: COLORS.amber }}>Recent phrases</p>
+        <button type="button" className="text-[12px] font-semibold" style={{ color: COLORS.amber }}>
+          See all {">"}
+        </button>
+      </div>
+      <div className="flex gap-3 overflow-x-auto px-[22px] pb-1 [scroll-snap-type:x_mandatory]">
+        {phrases.map((phrase) => (
+          <button
+            key={phrase.es}
+            type="button"
+            onClick={() => onSelect(phrase)}
+            className="shrink-0 scroll-ml-[22px] rounded-[18px] p-3 text-left [scroll-snap-align:start]"
+            style={{
+              width: 178,
+              background: COLORS.card,
+              border: `0.5px solid ${COLORS.hair}`,
+              boxShadow: '0 1px 2px rgba(17,16,16,0.04), 0 6px 16px rgba(17,16,16,0.04), inset 0 1px 0 rgba(255,255,255,0.9)',
+            }}
+          >
+            <p className="text-[17px] leading-tight" style={{ color: COLORS.ink }}>
+              <Serif style={{ fontWeight: 390 }}>{phrase.es}</Serif>
+            </p>
+            <p className="mt-2 font-mono text-[10.5px] leading-snug" style={{ color: COLORS.amberDeep }}>{phrase.phonetic}</p>
+            <div className="my-3 h-px" style={{ background: COLORS.hair }} />
+            <p className="text-[12px] italic leading-snug" style={{ color: COLORS.muted }}>{phrase.en}</p>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function FooterQuote() {
+  return (
+    <footer className="px-7 pb-[110px] pt-2 text-center">
+      <div className="mb-4 h-px" style={{ background: COLORS.hair }} />
+      <p className="text-[15px] italic" style={{ color: COLORS.muted }}>
+        <Serif italic style={{ fontWeight: 340 }}>El que habla dos lenguas vale por dos.</Serif>
+      </p>
+      <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.15em]" style={{ color: COLORS.muted2 }}>
+        - Proverbio espanol
+      </p>
+    </footer>
+  )
+}
+
+function BottomSheet({ title, children, onClose }) {
+  return (
+    <motion.div
+      className="absolute inset-0 z-50 flex items-end bg-black/20 px-3 pb-3"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-end justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}
       onClick={onClose}
     >
       <motion.div
         initial={{ y: '100%' }}
         animate={{ y: 0 }}
         exit={{ y: '100%' }}
-        transition={{ type: 'spring', stiffness: 340, damping: 36 }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-[430px] overflow-hidden rounded-t-[2rem] bg-white pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+        transition={{ type: 'spring', stiffness: 330, damping: 32 }}
+        onClick={(event) => event.stopPropagation()}
+        className="w-full rounded-[28px] p-5"
+        style={{
+          background: COLORS.card,
+          border: '0.5px solid rgba(255,255,255,0.7)',
+          boxShadow: '0 24px 60px rgba(17,16,16,0.22), inset 0 1px 0 rgba(255,255,255,0.9)',
+        }}
       >
-        <div className="flex justify-center pt-3 pb-1">
-          <div className="h-1 w-9 rounded-full bg-ink/10" />
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <h3 className="text-[21px] leading-tight" style={{ color: COLORS.ink }}>
+            <Serif style={{ fontWeight: 390 }}>{title}</Serif>
+          </h3>
+          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-full bg-black/[0.05] text-ink/45">x</button>
         </div>
-        <div className="upgrade-card mx-4 mt-2 rounded-[1.5rem] px-5 py-5 text-white">
-          <p className="text-[0.62rem] font-bold uppercase tracking-[0.1em] text-white/60">Lane Pro</p>
-          <h2 className="mt-1.5 text-[1.4rem] font-bold tracking-[-0.04em]">Speak without limits</h2>
-          <p className="mt-1 text-[0.8rem] text-white/65">Unlimited AI coaching. Every feature unlocked.</p>
-        </div>
-        <div className="mt-3 space-y-2 px-4">
-          {[
-            'Unlimited speaking sessions daily',
-            'Offline phrase library — unlimited saves',
-            'Advanced pronunciation analytics',
-            'All 6 languages with native voices',
-          ].map((text) => (
-            <div key={text} className="flex items-center gap-3 rounded-[1rem] bg-ink/[0.03] px-3.5 py-2.5">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              <p className="text-[0.78rem] font-medium text-ink">{text}</p>
-            </div>
-          ))}
-        </div>
-        <div className="mt-3 flex gap-2.5 px-4">
-          {PLANS.map((plan) => (
-            <button
-              key={plan.id}
-              type="button"
-              onClick={() => setSelected(plan.id)}
-              className="relative flex-1 rounded-[1.25rem] border-[1.5px] px-3.5 py-3 text-left transition"
-              style={{
-                borderColor: selected === plan.id ? '#22c55e' : 'rgba(15,20,25,0.08)',
-                background: selected === plan.id ? 'rgba(34,197,94,0.05)' : '#fff',
-              }}
-            >
-              {plan.badge && (
-                <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 rounded-full bg-accent px-2.5 py-0.5 text-[0.58rem] font-bold text-white whitespace-nowrap">
-                  {plan.badge}
-                </span>
-              )}
-              <p className="text-[0.72rem] font-semibold" style={{ color: selected === plan.id ? '#22c55e' : 'rgba(15,20,25,0.4)' }}>
-                {plan.label}
-              </p>
-              <p className="mt-0.5 text-[1.1rem] font-bold tracking-[-0.03em] text-ink">{plan.price}</p>
-              <p className="text-[0.66rem] text-ink/35">{plan.period}</p>
-            </button>
-          ))}
-        </div>
-        <div className="mt-4 px-4">
-          <button type="button" className="btn-primary w-full !py-3.5 !text-[0.88rem]" style={{ boxShadow: '0 12px 32px -8px rgba(34,197,94,0.4)' }}>
-            Start 7-day free trial
-          </button>
-          <p className="mt-2 text-center text-[0.67rem] text-ink/30">Cancel anytime. No charge during trial.</p>
-          <div className="mt-2 flex items-center justify-center gap-4">
-            <button type="button" className="text-[0.67rem] text-ink/28">Restore</button>
-            <span className="text-ink/15">·</span>
-            <button type="button" className="text-[0.67rem] text-ink/28">Privacy</button>
-            <span className="text-ink/15">·</span>
-            <button type="button" className="text-[0.67rem] text-ink/28">Terms</button>
-          </div>
-        </div>
+        {children}
       </motion.div>
     </motion.div>
+  )
+}
+
+export function LearningPage({ auth, route }) {
+  const profile = auth.profile ?? {
+    email: auth.session?.email || '',
+    languageLearning: 'es',
+    nativeLanguage: 'en',
+    confidenceScore: 78,
+    streakCount: 12,
+    level: 1,
+  }
+
+  const languageCode = profile.languageLearning || 'es'
+  const language = SUPPORTED_LANGUAGES.find((entry) => entry.code === languageCode) || SUPPORTED_LANGUAGES.find((entry) => entry.code === 'es') || SUPPORTED_LANGUAGES[0]
+  const copy = languageCopy(language)
+  const userName = getFirstName(profile, auth)
+  const recognitionRef = useRef(null)
+
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [sheet, setSheet] = useState(null)
+  const [challengeState, setChallengeState] = useState({ listening: false, transcript: '', score: null })
+  const [lookupState, setLookupState] = useState({ loading: false, query: '', result: null, error: '' })
+  const [cameraState, setCameraState] = useState({ loading: false, result: null, error: '' })
+
+  const currentLesson = useMemo(() => ({
+    id: 'lesson-14',
+    titleStart: copy.titleStart,
+    titleAccent: copy.titleAccent,
+    titleEnd: copy.titleEnd,
+    moduleLabel: copy.moduleLabel,
+    totalPhrases: 12,
+    durationSec: 243,
+    elapsedSec: 102,
+    spoken: copy.spoken,
+    plan: [
+      { label: 'Listen', detail: 'Hear the Madrid cafe line at natural speed.' },
+      { label: 'Breakdown', detail: 'Learn desayuno, cafe con leche, and polite ordering rhythm.' },
+      { label: 'Repeat', detail: 'Say the phrase back until the stress feels natural.' },
+      { label: 'Use it', detail: 'Practice a short breakfast order with the tutor.' },
+    ],
+  }), [copy])
+
+  const dailyChallenge = useMemo(() => ({
+    kind: 'trabalenguas',
+    textEs: 'Tres tristes tigres tragaban trigo en un trigal.',
+    phonetic: ['tres', 'TREES-tes', 'TEE-gres', 'tra-GA-ban', 'TREE-go', 'en un tri-GAL'],
+    textEn: 'Three sad tigers ate wheat in a wheat field.',
+    streakDots: 3,
+  }), [])
+
+  useEffect(() => {
+    return () => {
+      stopOfflineSpeech()
+      recognitionRef.current?.stop?.()
+    }
+  }, [])
+
+  function toggleLessonPlayback() {
+    if (isPlaying) {
+      stopOfflineSpeech()
+      setIsPlaying(false)
+      return
+    }
+
+    setIsPlaying(true)
+    speakOffline(currentLesson.spoken, language.code, 0.86, {
+      onEnd: () => setIsPlaying(false),
+      onError: () => setIsPlaying(false),
+    })
+  }
+
+  async function runLookup(query) {
+    const clean = query.trim()
+    if (!clean) return
+    setLookupState({ loading: true, query: clean, result: null, error: '' })
+    try {
+      const session = await auth.getValidSession?.().catch(() => auth.session)
+      const result = await postTutorSession({
+        mode: 'quick-ask',
+        text: clean,
+        languageCode: language.code,
+        nativeLanguageCode: profile.nativeLanguage || 'en',
+        tutorStyle: profile.tutorStyle || 'encouraging',
+        includeAudio: false,
+      }, session?.idToken || auth.session?.idToken || '')
+      setLookupState({ loading: false, query: clean, result, error: '' })
+    } catch (error) {
+      setLookupState({ loading: false, query: clean, result: null, error: error.message || 'Tutor unavailable.' })
+    }
+  }
+
+  async function runCameraOcr(file) {
+    if (!file) return
+    setCameraState({ loading: true, result: null, error: '' })
+    try {
+      const imageBase64 = await blobToBase64(file)
+      const session = await auth.getValidSession?.().catch(() => auth.session)
+      const result = await postTutorSession({
+        mode: 'ocr',
+        imageBase64,
+        mimeType: file.type || 'image/jpeg',
+        sourceType: 'camera',
+        languageCode: language.code,
+        nativeLanguageCode: profile.nativeLanguage || 'en',
+        tutorStyle: profile.tutorStyle || 'encouraging',
+        includeAudio: false,
+      }, session?.idToken || auth.session?.idToken || '')
+      setCameraState({ loading: false, result, error: '' })
+    } catch (error) {
+      setCameraState({ loading: false, result: null, error: error.message || 'Camera translate unavailable.' })
+    }
+  }
+
+  function startChallengeAttempt() {
+    const Recognition = typeof window === 'undefined' ? null : window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!Recognition) {
+      setChallengeState({ listening: false, transcript: '', score: null })
+      return
+    }
+
+    const recognition = new Recognition()
+    recognition.lang = language.sttCode || language.locale || 'es-ES'
+    recognition.interimResults = true
+    recognition.maxAlternatives = 1
+    recognition.onstart = () => setChallengeState({ listening: true, transcript: '', score: null })
+    recognition.onerror = () => setChallengeState((current) => ({ ...current, listening: false }))
+    recognition.onend = () => setChallengeState((current) => ({ ...current, listening: false }))
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results).map((result) => result[0]?.transcript || '').join(' ').trim()
+      const last = event.results[event.results.length - 1]
+      setChallengeState((current) => ({ ...current, transcript }))
+      if (last?.isFinal && transcript) {
+        const expectedWords = dailyChallenge.textEs.toLowerCase().replace(/[.,]/g, '').split(/\s+/)
+        const heardWords = transcript.toLowerCase().replace(/[.,]/g, '').split(/\s+/)
+        const hits = expectedWords.filter((word) => heardWords.includes(word)).length
+        const score = Math.max(42, Math.min(98, Math.round((hits / expectedWords.length) * 100)))
+        setChallengeState({ listening: false, transcript, score })
+        recognition.stop()
+      }
+    }
+    recognitionRef.current = recognition
+    recognition.start()
+  }
+
+  function handleQuickAction(id) {
+    if (id === 'saved') {
+      route.navigate('/downloads')
+      return
+    }
+    if (id === 'shadowing') {
+      route.navigate('/train')
+      return
+    }
+    setSheet(id)
+  }
+
+  function playPhrase(phrase) {
+    speakOffline(phrase.es, language.code, 0.86)
+  }
+
+  return (
+    <AppShell auth={auth} route={route} section="home">
+      <div
+        className="min-h-full overflow-hidden"
+        style={{
+          background: COLORS.paper,
+          color: COLORS.ink,
+          fontFamily: '"Geist", system-ui, sans-serif',
+        }}
+      >
+        <div className="pointer-events-none absolute inset-0 opacity-[0.18]" style={{ backgroundImage: 'radial-gradient(rgba(17,16,16,0.18) 0.45px, transparent 0.45px)', backgroundSize: '5px 5px', mixBlendMode: 'multiply' }} />
+
+        <main className="relative z-10 space-y-5 pt-[calc(env(safe-area-inset-top)+62px)]">
+          <section className="px-[22px]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[12px] leading-none" style={{ color: COLORS.muted }}>
+                  Good morning, <span className="font-semibold" style={{ color: COLORS.ink2 }}>{userName}</span>
+                </p>
+                <h1 className="mt-4 max-w-[21rem] text-[33px] leading-[1.04]" style={{ color: COLORS.ink }}>
+                  <Serif style={{ fontWeight: 380 }}>Start learning </Serif>
+                  <Serif italic style={{ fontWeight: 340 }}>{language.label}</Serif>
+                  <Serif style={{ fontWeight: 380 }}> by speaking naturally.</Serif>
+                </h1>
+              </div>
+              <button
+                type="button"
+                onClick={() => route.navigate('/settings')}
+                className="mt-[-2px] flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-ink/60"
+                aria-label="Settings"
+              >
+                <Icon name="settings" size={19} stroke={1.55} />
+              </button>
+            </div>
+          </section>
+
+          <section className="grid grid-cols-3 gap-2 px-4">
+            <StatCard icon="flame" label="Streak" value={`${profile.streakCount || 12} days`} />
+            <StatCard icon="bolt" label="Today" value={`${profile.confidenceScore || 78} %`} active />
+            <StatCard icon="trophy" label="Level" value={profile.confidenceLevel === 'conversational' ? 'B1 inter.' : `L${profile.level || 1}`} />
+          </section>
+
+          <ContinueHero
+            lesson={currentLesson}
+            isPlaying={isPlaying}
+            onPlay={toggleLessonPlayback}
+            onViewPlan={() => setSheet('plan')}
+          />
+
+          <QuickActions onAction={handleQuickAction} />
+
+          <DailyChallenge
+            challenge={dailyChallenge}
+            onAttempt={() => {
+              setSheet('challenge')
+              window.setTimeout(startChallengeAttempt, 260)
+            }}
+          />
+
+          <LanguageReach copy={copy} />
+
+          <RecentPhrases
+            phrases={RECENT_PHRASES}
+            onSelect={(phrase) => {
+              setSheet({ type: 'phrase', phrase })
+              playPhrase(phrase)
+            }}
+          />
+
+          <FooterQuote />
+        </main>
+
+        <AnimatePresence>
+          {sheet === 'lookup' ? (
+            <BottomSheet title="Quick lookup" onClose={() => setSheet(null)}>
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  runLookup(new FormData(event.currentTarget).get('query') || '')
+                }}
+                className="space-y-3"
+              >
+                <input
+                  name="query"
+                  autoFocus
+                  placeholder="How do I order breakfast?"
+                  className="w-full rounded-[18px] px-4 py-4 text-[15px] outline-none"
+                  style={{ background: COLORS.paper, border: `0.5px solid ${COLORS.hair}` }}
+                />
+                <button type="submit" className="h-12 w-full rounded-full text-[14px] font-semibold" style={{ background: COLORS.ink, color: COLORS.paper }}>
+                  Ask tutor
+                </button>
+              </form>
+              {lookupState.loading ? <p className="mt-4 text-[13px]" style={{ color: COLORS.muted }}>Building a natural phrase...</p> : null}
+              {lookupState.error ? <p className="mt-4 text-[13px]" style={{ color: '#A33A2B' }}>{lookupState.error}</p> : null}
+              {lookupState.result ? (
+                <div className="mt-4 rounded-[18px] p-4" style={{ background: COLORS.paper, border: `0.5px solid ${COLORS.hair}` }}>
+                  <p className="text-[20px] leading-tight"><Serif>{lookupState.result.naturalPhrase}</Serif></p>
+                  <p className="mt-2 font-mono text-[11px]" style={{ color: COLORS.amberDeep }}>{lookupState.result.phonetic}</p>
+                  <p className="mt-3 text-[13px]" style={{ color: COLORS.muted }}>{lookupState.result.context || lookupState.result.pronunciationTip}</p>
+                </div>
+              ) : null}
+            </BottomSheet>
+          ) : null}
+
+          {sheet === 'plan' ? (
+            <BottomSheet title="Lesson plan" onClose={() => setSheet(null)}>
+              <p className="text-[22px] leading-tight" style={{ color: COLORS.ink }}>
+                <Serif style={{ fontWeight: 390 }}>{currentLesson.titleStart} </Serif>
+                <Serif italic style={{ fontWeight: 340 }}>{currentLesson.titleAccent}</Serif>
+                <Serif style={{ fontWeight: 390 }}> {currentLesson.titleEnd}</Serif>
+              </p>
+              <div className="mt-5 space-y-2.5">
+                {currentLesson.plan.map((step, index) => (
+                  <div
+                    key={step.label}
+                    className="flex gap-3 rounded-[18px] p-3"
+                    style={{ background: COLORS.paper, border: `0.5px solid ${COLORS.hair}` }}
+                  >
+                    <span
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold"
+                      style={{ background: COLORS.ink, color: COLORS.paper }}
+                    >
+                      {index + 1}
+                    </span>
+                    <div>
+                      <p className="text-[14px] font-semibold" style={{ color: COLORS.ink }}>{step.label}</p>
+                      <p className="mt-1 text-[12.5px] leading-snug" style={{ color: COLORS.muted }}>{step.detail}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSheet(null)
+                  route.navigate('/train')
+                }}
+                className="mt-5 h-12 w-full rounded-full text-[14px] font-semibold"
+                style={{ background: COLORS.ink, color: COLORS.paper }}
+              >
+                Start lesson
+              </button>
+            </BottomSheet>
+          ) : null}
+
+          {sheet === 'camera' ? (
+            <BottomSheet title="Camera translate" onClose={() => setSheet(null)}>
+              <label
+                className="flex h-28 w-full cursor-pointer flex-col items-center justify-center rounded-[20px] text-center"
+                style={{ background: COLORS.paper, border: `0.5px solid ${COLORS.hair}`, color: COLORS.muted }}
+              >
+                <Icon name="camera" size={24} stroke={1.6} />
+                <span className="mt-2 text-[13px] font-semibold">Scan a menu, sign, or screen</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(event) => runCameraOcr(event.target.files?.[0])}
+                />
+              </label>
+              {cameraState.loading ? <p className="mt-4 text-[13px]" style={{ color: COLORS.muted }}>Reading the image...</p> : null}
+              {cameraState.error ? <p className="mt-4 text-[13px]" style={{ color: '#A33A2B' }}>{cameraState.error}</p> : null}
+              {cameraState.result ? (
+                <div className="mt-4 rounded-[18px] p-4" style={{ background: COLORS.paper, border: `0.5px solid ${COLORS.hair}` }}>
+                  <p className="text-[18px] leading-tight"><Serif>{cameraState.result.naturalPhrase}</Serif></p>
+                  <p className="mt-2 font-mono text-[11px]" style={{ color: COLORS.amberDeep }}>{cameraState.result.phonetic}</p>
+                  <p className="mt-3 text-[13px]" style={{ color: COLORS.muted }}>{cameraState.result.context || cameraState.result.extractedText}</p>
+                </div>
+              ) : null}
+            </BottomSheet>
+          ) : null}
+
+          {sheet === 'challenge' ? (
+            <BottomSheet title="Daily challenge" onClose={() => setSheet(null)}>
+              <p className="text-[18px] leading-tight"><Serif>{dailyChallenge.textEs}</Serif></p>
+              <p className="mt-3 font-mono text-[11px]" style={{ color: COLORS.amberDeep }}>{dailyChallenge.phonetic.join(' · ')}</p>
+              <button
+                type="button"
+                onClick={startChallengeAttempt}
+                className="mt-4 h-12 w-full rounded-full text-[14px] font-semibold"
+                style={{ background: COLORS.ink, color: COLORS.paper }}
+              >
+                {challengeState.listening ? 'Listening...' : 'Try again'}
+              </button>
+              {challengeState.transcript ? (
+                <p className="mt-4 text-[13px]" style={{ color: COLORS.muted }}>{challengeState.transcript}</p>
+              ) : null}
+              {challengeState.score !== null ? (
+                <div className="mt-4 rounded-[18px] p-4" style={{ background: COLORS.paper, border: `0.5px solid ${COLORS.hair}` }}>
+                  <p className="text-[26px] leading-none"><Serif>{challengeState.score}%</Serif></p>
+                  <p className="mt-2 text-[13px]" style={{ color: COLORS.muted }}>
+                    {challengeState.score >= 82 ? 'Strong. Keep the tr rhythm light and fast.' : 'Close. Slow down the tr sound, then speed it back up.'}
+                  </p>
+                </div>
+              ) : null}
+            </BottomSheet>
+          ) : null}
+
+          {sheet?.type === 'phrase' ? (
+            <BottomSheet title="Recent phrase" onClose={() => setSheet(null)}>
+              <p className="text-[23px] leading-tight"><Serif>{sheet.phrase.es}</Serif></p>
+              <p className="mt-3 font-mono text-[11px]" style={{ color: COLORS.amberDeep }}>{sheet.phrase.phonetic}</p>
+              <div className="my-4 h-px" style={{ background: COLORS.hair }} />
+              <p className="text-[14px] italic" style={{ color: COLORS.muted }}>{sheet.phrase.en}</p>
+              <button
+                type="button"
+                onClick={() => playPhrase(sheet.phrase)}
+                className="mt-5 h-12 w-full rounded-full text-[14px] font-semibold"
+                style={{ background: COLORS.ink, color: COLORS.paper }}
+              >
+                Play phrase
+              </button>
+            </BottomSheet>
+          ) : null}
+        </AnimatePresence>
+      </div>
+    </AppShell>
   )
 }

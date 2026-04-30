@@ -6,6 +6,15 @@ export function AuthPage({ auth, mode, route }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const isSignup = mode === 'signup'
+  const googleBusy = auth.googleAuth?.status === 'working' || auth.googleAuth?.status === 'redirecting'
+  const googleBlocked = auth.googleAuth?.available === false
+  const googleStatusCopy = googleBusy
+    ? auth.googleAuth?.status === 'redirecting'
+      ? 'Redirecting to Google...'
+      : 'Connecting to Google...'
+    : isSignup
+      ? 'Continue with Google'
+      : 'Log in with Google'
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -19,9 +28,13 @@ export function AuthPage({ auth, mode, route }) {
   }
 
   async function handleGoogleAuth() {
-    const result = await auth.signInWithGoogle()
-    if (result?.redirecting) return
-    route.navigate(result.profile?.languageLearning ? APP_ROUTES.app : APP_ROUTES.onboarding)
+    try {
+      const result = await auth.signInWithGoogle()
+      if (result?.redirecting) return
+      route.navigate(result.profile?.languageLearning ? APP_ROUTES.app : APP_ROUTES.onboarding)
+    } catch {
+      // useAuth already stores the readable auth error state.
+    }
   }
 
   return (
@@ -37,7 +50,7 @@ export function AuthPage({ auth, mode, route }) {
                 <path d="M12 18v3" />
               </svg>
             </div>
-            <span className="text-[1rem] font-bold tracking-[-0.02em] text-ink">UseLang</span>
+            <span className="text-[1rem] font-bold tracking-[-0.02em] text-ink">Lane</span>
           </button>
 
           <motion.div
@@ -69,14 +82,16 @@ export function AuthPage({ auth, mode, route }) {
           >
             <button
               type="button"
-              disabled={auth.busy}
+              disabled={auth.busy || googleBusy || googleBlocked}
               onClick={handleGoogleAuth}
               className="flex w-full items-center justify-center gap-3 rounded-[1rem] bg-white px-4 py-3.5 text-[0.88rem] font-medium text-ink transition active:scale-[0.98] disabled:opacity-40"
               style={{ boxShadow: '0 14px 34px -26px rgba(15, 20, 25, 0.18)' }}
             >
               <GoogleMark />
-              {isSignup ? 'Continue with Google' : 'Log in with Google'}
+              {googleStatusCopy}
             </button>
+
+            <AnimateAuthStatus auth={auth} onRetry={handleGoogleAuth} />
           </motion.div>
 
           {/* divider */}
@@ -149,5 +164,65 @@ function GoogleMark() {
       <path d="M3.97 10.72a5.41 5.41 0 010-3.44V4.95H.96a9 9 0 000 8.1l3.01-2.33Z" fill="#FBBC05" />
       <path d="M9 3.58c1.32 0 2.5.45 3.44 1.33l2.58-2.58C13.47.9 11.43 0 9 0A9 9 0 00.96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58Z" fill="#EA4335" />
     </svg>
+  )
+}
+
+function AnimateAuthStatus({ auth, onRetry }) {
+  const showCard = Boolean(
+    auth.googleAuth?.message ||
+      auth.error ||
+      auth.googleAuth?.status === 'redirecting',
+  )
+
+  if (!showCard) return null
+
+  const message =
+    auth.googleAuth?.status === 'redirecting'
+      ? 'Google is opening. If nothing appears, come back and retry once.'
+      : auth.googleAuth?.message || auth.error
+
+  const tone =
+    auth.googleAuth?.status === 'redirecting'
+      ? 'bg-accent/[0.08] text-accent'
+      : auth.googleAuth?.available === false || auth.error
+        ? 'bg-danger/8 text-danger'
+        : 'bg-ink/[0.04] text-ink/50'
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`mt-3 rounded-[1rem] px-4 py-3 ${tone}`}
+    >
+      <p className="text-[0.78rem] leading-snug">{message}</p>
+      {auth.googleAuth?.needsAuthorizedDomain ? (
+        <p className="mt-2 text-[0.72rem] leading-snug">
+          Add <span className="font-semibold">{auth.googleAuth.host}</span> to Firebase Authorized Domains, or run the app on <span className="font-semibold">localhost</span>.
+        </p>
+      ) : null}
+      {auth.googleAuth?.status === 'error' || auth.googleAuth?.available === false ? (
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              auth.refreshGoogleReadiness()
+              if (auth.googleAuth?.available !== false) {
+                onRetry()
+              }
+            }}
+            className="rounded-full bg-white px-3 py-1.5 text-[0.72rem] font-semibold text-ink shadow-[0_10px_20px_-16px_rgba(15,20,25,0.28)]"
+          >
+            Retry Google
+          </button>
+          <button
+            type="button"
+            onClick={auth.refreshGoogleReadiness}
+            className="rounded-full px-3 py-1.5 text-[0.72rem] font-semibold text-ink/55"
+          >
+            Refresh status
+          </button>
+        </div>
+      ) : null}
+    </motion.div>
   )
 }

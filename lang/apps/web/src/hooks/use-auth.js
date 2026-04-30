@@ -15,6 +15,7 @@ import {
 } from '@/lib/firebase-client'
 import {
   consumeGoogleRedirectSession,
+  getGoogleAuthReadiness,
   signInWithGoogleProvider,
   signOutGoogleSession,
 } from '@/lib/firebase-sdk'
@@ -25,6 +26,32 @@ export function useAuth() {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [error, setError] = useState('')
+  const [googleAuth, setGoogleAuth] = useState(() => ({
+    status: 'idle',
+    ...getGoogleAuthReadiness(),
+  }))
+
+  const refreshGoogleReadiness = useCallback(() => {
+    setGoogleAuth((current) => ({
+      ...current,
+      status: current.status === 'working' ? 'working' : 'idle',
+      ...getGoogleAuthReadiness(),
+    }))
+  }, [])
+
+  useEffect(() => {
+    refreshGoogleReadiness()
+
+    if (typeof window === 'undefined') return undefined
+
+    const handleOnlineState = () => refreshGoogleReadiness()
+    window.addEventListener('online', handleOnlineState)
+    window.addEventListener('offline', handleOnlineState)
+    return () => {
+      window.removeEventListener('online', handleOnlineState)
+      window.removeEventListener('offline', handleOnlineState)
+    }
+  }, [refreshGoogleReadiness])
 
   useEffect(() => {
     let cancelled = false
@@ -60,6 +87,13 @@ export function useAuth() {
         clearStoredSession()
         if (!cancelled) {
           setError(authError.message)
+          setGoogleAuth((current) => ({
+            ...current,
+            status: 'error',
+            code: authError.code || current.code,
+            message: authError.message || current.message,
+            ...authError.details,
+          }))
           setStatus('ready')
         }
       }
@@ -108,9 +142,31 @@ export function useAuth() {
   }, [])
 
   const signInWithGoogle = useCallback(async () => {
+    setGoogleAuth((current) => ({
+      ...current,
+      status: 'working',
+      ...getGoogleAuthReadiness(),
+    }))
+
     return completeAuth(async () => {
-      const result = await signInWithGoogleProvider()
-      return result.redirecting ? { redirecting: true } : result.session
+      try {
+        const result = await signInWithGoogleProvider()
+        setGoogleAuth((current) => ({
+          ...current,
+          status: result.redirecting ? 'redirecting' : 'success',
+          ...getGoogleAuthReadiness(),
+        }))
+        return result.redirecting ? { redirecting: true } : result.session
+      } catch (googleError) {
+        setGoogleAuth((current) => ({
+          ...current,
+          status: 'error',
+          code: googleError.code || current.code,
+          message: googleError.message || current.message,
+          ...googleError.details,
+        }))
+        throw googleError
+      }
     })
   }, [])
 
@@ -195,6 +251,10 @@ export function useAuth() {
     setSession(null)
     setProfile(null)
     setError('')
+    setGoogleAuth({
+      status: 'idle',
+      ...getGoogleAuthReadiness(),
+    })
   }, [])
 
   return {
@@ -203,6 +263,7 @@ export function useAuth() {
     session,
     profile,
     error,
+    googleAuth,
     hasOnboarded: profileHasOnboarding(profile),
     signIn,
     signUp,
@@ -213,5 +274,6 @@ export function useAuth() {
     loadHistory,
     applyServerProfile,
     getValidSession,
+    refreshGoogleReadiness,
   }
 }

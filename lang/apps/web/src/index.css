@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Geist+Mono:wght@400;500;600&family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -433,4 +433,36 @@ input[type="range"]::-moz-range-thumb {
 .stage-ring {
   border: 0.5px solid rgba(0, 0, 0, 0.04);
   background: rgba(255, 255, 255, 0.6);
+}
+
+/* ---- home v2 canvas ---- */
+
+.home-v2 {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(201, 169, 122, 0.16), transparent 34%),
+    radial-gradient(circle at 82% 18%, rgba(107, 142, 184, 0.09), transparent 24%),
+    radial-gradient(circle at 50% 100%, rgba(245, 237, 224, 0.45), transparent 36%),
+    linear-gradient(180deg, #fffdf9 0%, #f8f1e6 46%, #f1e8dd 100%);
+}
+
+.home-v2 h1,
+.home-v2 h2 {
+  font-feature-settings: "ss01", "ss02", "cv11";
+}
+
+.home-v2::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.018;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.92'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes hero-halo {
+  0%, 100% { opacity: 0.75; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.04); }
 }

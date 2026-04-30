@@ -1,0 +1,214 @@
+// ── Local tutor orchestrator (Gemma) ─────────────────────────────────────────
+// ALL tutor responses flow through this module via on-device Gemma.
+// ZERO cloud LLMs. ZERO fallback models. ZERO hardcoded responses.
+// If Gemma fails → error. No fake output.
+
+import { generateTutorJson, getGemmaState, loadGemmaModel } from "./gemma-engine";
+import type { ChatMessage } from "./gemma-engine";
+import type { TutorRequest, TutorResponse } from "./tutor-api";
+
+// ── Language label helpers ───────────────────────────────────────────────────
+// Keep this tiny — the full list lives in constants. We only need readable
+// names for the prompt and tolerate unknown codes gracefully.
+const LANG_LABELS: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  fr: "French",
+  "fr-CA": "Canadian French",
+  de: "German",
+  it: "Italian",
+  pt: "Portuguese",
+  "pt-BR": "Brazilian Portuguese",
+  ja: "Japanese",
+  ko: "Korean",
+  zh: "Mandarin Chinese",
+  ar: "Arabic",
+  hi: "Hindi",
+  tr: "Turkish",
+  nl: "Dutch",
+  sv: "Swedish",
+  pl: "Polish",
+  ru: "Russian",
+};
+
+function labelFor(code?: string): string {
+  if (!code) return "the target language";
+  return LANG_LABELS[code] || LANG_LABELS[code.slice(0, 2)] || code;
+}
+
+// ── System prompt (mirror of services/tutor/system-prompt.js, trimmed) ──────
+// Keep the prompt compact to leave headroom for the user turn and JSON.
+
+function buildGemmaSystemPrompt(req: TutorRequest): string {
+  const target = labelFor(req.languageCode);
+  const native = labelFor(req.nativeLanguageCode || "en");
+  const modePlaybook = MODE_PLAYBOOKS[req.mode] || MODE_PLAYBOOKS["quick-ask"];
+
+  return [
+    "You are Lang — a premium one-on-one speaking coach. You coach, you don't chat.",
+    `The user speaks ${native} and is learning ${target}.`,
+    req.userName ? `The user's name is ${req.userName}. When the phrase involves introductions, saying one's name, or any first-person identity, use "${req.userName}" as the name in the translation and examples.` : "",
+    // Hard rule restated in two ways so a smaller model can't rationalize
+    // around it. The historical bug was the model echoing the English input
+    // back as the answer when target=Mandarin — that must never happen.
+    `HARD RULE: \`naturalPhrase\` MUST always be written in ${target}. Never write it in ${native}, even if the user typed in ${native}, even if the request is "How do I say X in ${target}?". The whole point of this app is to translate the user's intent INTO ${target} and coach them through saying it.`,
+    "Rules: short coaching sentences. Never say you are an AI. Never lecture grammar unless asked. One correction at a time. Translate like a local would actually say it.",
+    "Phonetics: readable to a native speaker of the user's language (not IPA). Capitalize stressed syllables. For Mandarin and other tonal languages, use pinyin/romanization with tone marks.",
+    modePlaybook,
+    "Return ONLY one JSON object with these fields (use empty strings/arrays for fields you don't need):",
+    '{ "naturalPhrase": string, "phonetic": string, "literalMeaning": string, "context": string, "pronunciationTip": string, "articulation": { "tonguePlacement": string, "lipShape": string, "airflow": string, "stress": string }, "correctionLine": string, "correctedVersion": string, "errorTypes": string[], "fixDrill": string, "repeatPrompt": string, "homework": string[], "localReply": string, "shouldRepeat": boolean, "audioText": string, "audioSegments": [{"lang": string, "text": string}], "examTask": string, "examScore": { "accuracy": number, "fluency": number, "pronunciation": number, "passed": boolean } }',
+    `audioText is what the tutor voice will speak — usually the naturalPhrase. audioSegments: ordered [{lang,text}] chunks. When native (${native}) ≠ target (${target}), put coaching/explanation in lang="${req.nativeLanguageCode || "en"}" and the target phrase in lang="${req.languageCode}". Example: [{"lang":"${req.nativeLanguageCode || "en"}","text":"Today we learn"},{"lang":"${req.languageCode}","text":"hola"},{"lang":"${req.nativeLanguageCode || "en"}","text":"which means hello"}]. correctionLine only after a user attempt. No prose outside the JSON.`,
+  ].join("\n\n");
+}
+
+const MODE_PLAYBOOKS: Record<TutorRequest["mode"], string> = {
+  "quick-ask":
+    "MODE: Quick Ask. User asked how to say or pronounce something. Fill naturalPhrase (the local-natural version), phonetic (readable to native speaker, not IPA), literalMeaning (word-for-word meaning that matches the EXACT sense used — e.g. if user says 'I love pizza' use the word for enjoying food, NOT romantic love; literalMeaning must reflect the specific word chosen), one-line context if useful, one pronunciationTip, and a concrete articulation cue. Spoken flow: how you say it, what the phrase means, say it bit by bit, now repeat. Keep it short. Leave correctionLine empty. IMPORTANT: Choose the word/form that matches the EXACT meaning and context the user intended. Never pick a generic or romantic sense when the user means something casual or specific.",
+  train:
+    "MODE: Train (Structured Drill Engine). If attemptTranscript is empty: give ONE sentence task in the target language. Include naturalPhrase, phonetic, context (explain the task in native language), one pronunciationTip, articulation cue. Set repeatPrompt to the sentence the user must produce. If attemptTranscript is present: EVALUATE STRICTLY. Set correctedVersion to the correct target-language sentence. Set errorTypes array with categories from: grammar, pronunciation, tone, word-choice, structure. Each entry is a short string explaining the specific error. Set correctionLine to a 1-line explanation of the MOST important error. Set fixDrill to the exact sentence the user must repeat. Set shouldRepeat=true if ANY error exists. Only set shouldRepeat=false when the attempt is correct. Never skip error classification.",
+  conversation:
+    "MODE: Conversation (Guided + Exam Hybrid). Stay in character for the scenario. localReply is a short line the role would actually say. naturalPhrase is a suggested user reply. Include phonetic and at most one tip. Keep turns SHORT and SIMPLE — only use vocabulary the user has likely learned. After 5-10 exchanges, if the user text contains 'EXAM MODE', switch to exam: set examTask to a translation task (English to target OR target to English). In exam mode: no hints, no corrections mid-response. Score accuracy/fluency/pronunciation in examScore object after the user answers.",
+  ocr:
+    "MODE: OCR. The user scanned text. Interpret the scene. context explains what the text means in context. naturalPhrase is how the user would naturally respond or act on it. Include phonetic and one tip.",
+  "phrase-split":
+    "MODE: Phrase Split. The user wants to learn a full sentence by breaking it into 2-4 bite-sized chunks. Return a JSON object with a \"chunks\" array. Each chunk: { \"english\": the English fragment, \"target\": the natural translation in the target language, \"phonetic\": readable phonetic for native speakers (not IPA, use tone marks for tonal languages), \"tip\": one short pronunciation or grammar tip }. Keep chunks semantically logical (e.g. \"I want\" / \"to be able to\" / \"order at a café\"). Also fill naturalPhrase with the FULL translated sentence, phonetic with full-sentence phonetic, and context with a short note. The chunks must concatenate into the full naturalPhrase.",
+  "live-camera":
+    "MODE: Live Camera Coach. If no image understanding is available, coach from the user's text or expectedPhrase only. Do not pretend to see the mouth. Give one safe mouth, lip, or tongue placement cue for the target phrase.",
+};
+
+// ── User turn builder ────────────────────────────────────────────────────────
+
+function buildUserTurn(req: TutorRequest): string {
+  const lines: string[] = [];
+  if (req.text) lines.push(`User said: ${req.text}`);
+  if (req.scenario) lines.push(`Scenario: ${req.scenario}`);
+  if (req.attemptTranscript) lines.push(`Attempt transcript: ${req.attemptTranscript}`);
+  if (req.expectedPhrase) lines.push(`Expected phrase: ${req.expectedPhrase}`);
+  if (req.sessionMemory) {
+    const m = req.sessionMemory;
+    const parts: string[] = [];
+    if (m.currentPhrase) parts.push(`currentPhrase=${JSON.stringify(m.currentPhrase)}`);
+    if (m.weakSounds?.length) parts.push(`weakSounds=${JSON.stringify(m.weakSounds)}`);
+    if (m.mistakes?.length) parts.push(`mistakes=${JSON.stringify(m.mistakes)}`);
+    if (m.understoodMeaning) parts.push("understoodMeaning=true");
+    if (parts.length) lines.push(`Session memory: { ${parts.join(", ")} }`);
+  }
+  if (req.mode === "ocr" && req.sourceType) {
+    lines.push(`Source type: ${req.sourceType}`);
+  }
+  if (!lines.length) {
+    // Empty body = "kick the lesson off"
+    lines.push(
+      `Start a short ${labelFor(req.languageCode)} lesson. Introduce one useful phrase, ask the user to repeat.`
+    );
+  }
+  return lines.join("\n");
+}
+
+// ── Response shaping ─────────────────────────────────────────────────────────
+
+function coerceResponse(raw: Record<string, unknown>): TutorResponse {
+  const s = (v: unknown): string => (typeof v === "string" ? v : "");
+  const arr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
+  const bool = (v: unknown): boolean => v === true;
+  const art = (raw.articulation as Record<string, unknown>) || {};
+
+  // Parse audioSegments: [{lang, text}] — tolerate partial / malformed entries.
+  const segs = Array.isArray(raw.audioSegments)
+    ? (raw.audioSegments as unknown[])
+        .filter((x): x is { lang: unknown; text: unknown } => typeof x === "object" && x !== null)
+        .map((x) => ({ lang: s(x.lang), text: s(x.text) }))
+        .filter((x) => x.lang && x.text)
+    : undefined;
+
+  const num = (v: unknown): number => (typeof v === "number" ? v : 0);
+
+  // Parse examScore if present
+  const rawExam = (raw.examScore as Record<string, unknown>) || {};
+  const hasExam = num(rawExam.accuracy) > 0 || num(rawExam.fluency) > 0;
+
+  const naturalPhrase = s(raw.naturalPhrase);
+  return {
+    naturalPhrase,
+    phonetic: s(raw.phonetic),
+    literalMeaning: s(raw.literalMeaning),
+    context: s(raw.context),
+    pronunciationTip: s(raw.pronunciationTip),
+    articulation: {
+      tonguePlacement: s(art.tonguePlacement),
+      lipShape: s(art.lipShape),
+      airflow: s(art.airflow),
+      stress: s(art.stress),
+    },
+    correctionLine: s(raw.correctionLine),
+    correctedVersion: s(raw.correctedVersion),
+    errorTypes: arr(raw.errorTypes),
+    fixDrill: s(raw.fixDrill),
+    repeatPrompt: s(raw.repeatPrompt),
+    homework: arr(raw.homework).slice(0, 2),
+    localReply: s(raw.localReply),
+    shouldRepeat: bool(raw.shouldRepeat),
+    audioText: s(raw.audioText) || naturalPhrase,
+    audioSegments: segs?.length ? segs : undefined,
+    examTask: s(raw.examTask) || undefined,
+    examScore: hasExam ? {
+      accuracy: num(rawExam.accuracy),
+      fluency: num(rawExam.fluency),
+      pronunciation: num(rawExam.pronunciation),
+      passed: bool(rawExam.passed),
+    } : undefined,
+    chunks: Array.isArray(raw.chunks)
+      ? (raw.chunks as unknown[])
+          .filter((x): x is Record<string, unknown> => typeof x === "object" && x !== null)
+          .map((c) => ({ english: s(c.english), target: s(c.target), phonetic: s(c.phonetic), tip: s(c.tip) }))
+          .filter((c) => c.english && c.target)
+      : undefined,
+    provider: "gemma",
+    providerModel: "local-gemma",
+  };
+}
+
+// ── Public entry point ───────────────────────────────────────────────────────
+
+export async function postTutorSessionGemma(req: TutorRequest): Promise<TutorResponse> {
+  const state = getGemmaState();
+  console.log("[gemma-tutor] MODEL USED:", state.usingStub ? "STUB" : "GEMMA");
+  console.log("[gemma-tutor] GEMMA INPUT:", JSON.stringify({ mode: req.mode, text: req.text, lang: req.languageCode }));
+
+  // Ensure model (or stub) is loaded. loadGemmaModel() always activates
+  // *something* — either the real model or the stub — so the app never
+  // hard-fails here.
+  if (!state.loaded) {
+    console.log("[gemma-tutor] Model not loaded. Triggering load…");
+    const ok = await loadGemmaModel();
+    if (!ok) {
+      const next = getGemmaState();
+      throw new Error(
+        next.error || "Gemma model failed to initialize. Check logs for details."
+      );
+    }
+  }
+
+  const messages: ChatMessage[] = [
+    { role: "system", content: buildGemmaSystemPrompt(req) },
+    { role: "user", content: buildUserTurn(req) },
+  ];
+
+  // generateTutorJson handles stub fallback internally
+  const json = await generateTutorJson(messages, {
+    maxTokens: 640,
+    temperature: 0.3,
+  });
+  const result = coerceResponse(json);
+  console.log("[gemma-tutor] OUTPUT:", JSON.stringify({ naturalPhrase: result.naturalPhrase, phonetic: result.phonetic }));
+  return result;
+}
+
+// Legacy preference API retained for older screens. Routing is local-only now,
+// so these functions no longer affect provider selection.
+export function setPreferOnDevice(value: boolean) {
+  void value;
+}
+export function getPreferOnDevice(): boolean {
+  return true;
+}

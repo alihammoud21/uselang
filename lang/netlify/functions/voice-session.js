@@ -17,6 +17,9 @@ import {
   buildWordArticulationGuide,
   syllabify,
 } from '../../lib/tutor-engine.js'
+import { buildMissingEnvPayload } from '../../services/shared/env.js'
+import { getSpeechToTextService, validateSpeechToTextEnv } from '../../services/stt/index.js'
+import { getTextToSpeechService, validateTextToSpeechEnv } from '../../services/tts/index.js'
 
 const PROJECT_ID = 'uselang'
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`
@@ -208,48 +211,28 @@ function syncUsageState(profile) {
   return nextProfile
 }
 
+let sttService
+let ttsService
+
 async function transcribeAudio(audioBuffer, mimeType, language) {
-  const sttResponse = await fetch(
-    `https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&punctuate=true&language=${language.sttCode}`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Token ${process.env.DEEPGRAM_STT_API_KEY}`,
-        'Content-Type': mimeType,
-      },
-      body: audioBuffer,
-    },
-  )
-
-  const payload = await sttResponse.json()
-
-  if (!sttResponse.ok) {
-    throw new Error(payload?.err_msg || 'Deepgram transcription failed.')
-  }
-
-  return payload?.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() || ''
+  sttService ||= getSpeechToTextService(process.env)
+  const result = await sttService.transcribe({
+    audioBuffer,
+    mimeType,
+    languageCode: language.sttCode,
+  })
+  return result.text
 }
 
 async function synthesizeSpeech(text, language) {
-  const ttsResponse = await fetch(`https://api.deepgram.com/v1/speak?model=${language.ttsModel}&encoding=mp3`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${process.env.DEEPGRAM_TTS_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ text }),
+  if (!language?.ttsModel) {
+    throw new Error(`No TTS voice is configured for ${language?.label || 'this language'}.`)
+  }
+  ttsService ||= getTextToSpeechService(process.env)
+  return ttsService.synthesize({
+    text,
+    voiceId: language.ttsModel,
   })
-
-  if (!ttsResponse.ok) {
-    const payload = await ttsResponse.text()
-    throw new Error(payload || 'Deepgram synthesis failed.')
-  }
-
-  const audioBuffer = Buffer.from(await ttsResponse.arrayBuffer())
-  return {
-    audioBase64: audioBuffer.toString('base64'),
-    audioMimeType: 'audio/mpeg',
-  }
 }
 
 function applyUsageStats(profile, delta = {}, now = new Date()) {
@@ -411,11 +394,9 @@ export async function handler(event) {
     return response(405, { error: 'Method not allowed.' })
   }
 
-  if (!process.env.DEEPGRAM_STT_API_KEY || !process.env.DEEPGRAM_TTS_API_KEY) {
-    return response(500, { error: 'Deepgram environment variables are missing.' })
-  }
-
   try {
+    validateSpeechToTextEnv(process.env)
+    validateTextToSpeechEnv(process.env)
     const idToken = getBearerToken(event.headers)
     if (!idToken) {
       return response(401, { error: 'Missing Firebase token.' })
@@ -523,7 +504,6 @@ export async function handler(event) {
       }
       const audio = await synthesizeSpeech(translatedText, targetLanguage)
       const guideText = buildPromptGuide({
-        translatedText,
         translation: translation || (shouldTranslate ? sourceText : ''),
         languageLabel: targetLanguage.label,
         profile: syncedProfile,
@@ -727,6 +707,10 @@ export async function handler(event) {
       passThreshold: LESSON_PASS_THRESHOLD,
     })
   } catch (error) {
+    const missingEnv = buildMissingEnvPayload(error)
+    if (missingEnv) {
+      return response(500, missingEnv)
+    }
     return response(500, {
       error: error.message || 'Voice processing failed.',
     })

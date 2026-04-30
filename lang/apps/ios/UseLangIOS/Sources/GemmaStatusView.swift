@@ -56,7 +56,7 @@ struct GemmaStatusView: View {
             Label("This device cannot run Gemma locally", systemImage: "exclamationmark.triangle")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.secondary)
-            Text("On-device AI requires an iPhone 12 or later with at least 6 GB of memory. Server-side AI is still available.")
+            Text("On-device AI requires supported hardware. Server-side LLM fallback is disabled.")
                 .font(.system(size: 13))
                 .foregroundStyle(.tertiary)
         }
@@ -65,17 +65,17 @@ struct GemmaStatusView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    // MARK: - Download Button
+    // MARK: - Install Button
 
     private var downloadButton: some View {
         Button(action: startDownload) {
             HStack {
-                Image(systemName: "arrow.down.circle")
+                Image(systemName: "square.and.arrow.down")
                     .font(.system(size: 18))
                 VStack(alignment: .leading) {
-                    Text("Download model")
+                    Text("Install bundled model")
                         .font(.system(size: 15, weight: .semibold))
-                    Text("~2 GB · One-time download")
+                    Text("Copies Gemma from the app bundle")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
@@ -91,7 +91,7 @@ struct GemmaStatusView: View {
         .tint(.accentColor)
     }
 
-    // MARK: - Download Progress
+    // MARK: - Install Progress
 
     private func downloadProgress(progress: Double) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -103,7 +103,7 @@ struct GemmaStatusView: View {
                     .font(.system(size: 13, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.secondary)
             }
-            Text("Downloading Gemma 4 E2B-it…")
+            Text("Installing bundled Gemma 4 E2B-it...")
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
         }

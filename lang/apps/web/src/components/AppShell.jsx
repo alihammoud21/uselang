@@ -3,35 +3,54 @@ import { APP_ROUTES } from '@/lib/routes'
 const NAV_ITEMS = [
   {
     id: 'home',
-    label: 'Home',
+    label: 'Today',
     path: APP_ROUTES.app,
     icon: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 10.2L12 3l9 7.2" />
         <path d="M5 9.4V19a1 1 0 001 1h3.5v-5a1.5 1.5 0 011.5-1.5h2a1.5 1.5 0 011.5 1.5v5H18a1 1 0 001-1V9.4" />
       </svg>
     ),
     iconFilled: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none">
         <path d="M12.6 2.4a1 1 0 00-1.2 0l-9 7.2A1 1 0 003 11v8a2 2 0 002 2h4v-5.5a1.5 1.5 0 011.5-1.5h3a1.5 1.5 0 011.5 1.5V21h4a2 2 0 002-2v-8a1 1 0 00.6-1.4l-9-7.2z" />
       </svg>
     ),
   },
   {
-    id: 'trainer',
+    id: 'train',
     label: 'Speak',
-    path: APP_ROUTES.trainer,
+    path: APP_ROUTES.train,
     icon: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <rect x="9" y="3" width="6" height="11" rx="3" />
         <path d="M5 11a7 7 0 0014 0" />
         <path d="M12 18v3" />
+        <path d="M9 21h6" />
       </svg>
     ),
     iconFilled: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none">
         <rect x="9" y="3" width="6" height="11" rx="3" />
-        <path d="M5 11a1 1 0 012 0 5 5 0 0010 0 1 1 0 012 0 7 7 0 01-6 6.93V20a1 1 0 01-2 0v-2.07A7 7 0 015 11z" />
+        <path d="M5 11a7 7 0 0014 0M12 18v3M9 21h6" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
+    id: 'globe',
+    label: 'Map',
+    path: APP_ROUTES.globe,
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M2 12h20" />
+        <path d="M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
+      </svg>
+    ),
+    iconFilled: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" fill="currentColor" fillOpacity="0.15" />
+        <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
       </svg>
     ),
   },
@@ -40,37 +59,17 @@ const NAV_ITEMS = [
     label: 'Progress',
     path: APP_ROUTES.history,
     icon: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 20V10" />
-        <path d="M9 20V6" />
-        <path d="M14 20v-8" />
-        <path d="M19 20v-4" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5 20V10" />
+        <path d="M12 20V4" />
+        <path d="M19 20v-7" />
       </svg>
     ),
     iconFilled: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-        <rect x="3" y="10" width="3" height="10" rx="1.5" />
-        <rect x="8" y="6" width="3" height="14" rx="1.5" />
-        <rect x="13" y="12" width="3" height="8" rx="1.5" />
-        <rect x="18" y="16" width="3" height="4" rx="1.5" />
-      </svg>
-    ),
-  },
-  {
-    id: 'downloads',
-    label: 'Library',
-    path: APP_ROUTES.downloads,
-    icon: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-        <polyline points="7 10 12 15 17 10" />
-        <line x1="12" y1="15" x2="12" y2="3" />
-      </svg>
-    ),
-    iconFilled: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4a1 1 0 012 0v4h14v-4a1 1 0 012 0z" />
-        <path d="M12 3a1 1 0 011 1v8.59l2.29-2.3a1 1 0 111.42 1.42l-4 4a1 1 0 01-1.42 0l-4-4a1 1 0 111.42-1.42L11 12.59V4a1 1 0 011-1z" />
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+        <rect x="4" y="10" width="3" height="10" rx="1.5" />
+        <rect x="10.5" y="4" width="3" height="16" rx="1.5" />
+        <rect x="17" y="13" width="3" height="7" rx="1.5" />
       </svg>
     ),
   },
@@ -79,13 +78,13 @@ const NAV_ITEMS = [
     label: 'Settings',
     path: APP_ROUTES.settings,
     icon: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="3" />
         <path d="M19.5 15.1a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-.9 1.5v.2a2 2 0 11-4 0v-.2a1.6 1.6 0 00-.9-1.5 1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-.9H3a2 2 0 110-4h.2a1.6 1.6 0 001.5-.9 1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3 1.6 1.6 0 00.9-1.5V3a2 2 0 114 0v.2a1.6 1.6 0 00.9 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8 1.6 1.6 0 001.5.9h.2a2 2 0 110 4h-.2a1.6 1.6 0 00-1.5.9z" />
       </svg>
     ),
     iconFilled: (
-      <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none">
         <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
         <path d="M19.5 15.1a1.6 1.6 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-.9 1.5v.2a2 2 0 11-4 0v-.2a1.6 1.6 0 00-.9-1.5 1.6 1.6 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-.9H3a2 2 0 110-4h.2a1.6 1.6 0 001.5-.9 1.6 1.6 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.6 1.6 0 001.8.3 1.6 1.6 0 00.9-1.5V3a2 2 0 114 0v.2a1.6 1.6 0 00.9 1.5 1.6 1.6 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.6 1.6 0 00-.3 1.8 1.6 1.6 0 001.5.9h.2a2 2 0 110 4h-.2a1.6 1.6 0 00-1.5.9z" />
       </svg>
@@ -122,25 +121,15 @@ export function AppShell({
                     type="button"
                     onClick={() => route.navigate(item.path)}
                     className={`flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-[1.1rem] px-1 py-1.5 transition ${
-                      item.id === 'trainer'
-                        ? `rounded-[1.35rem] px-2 py-2.5 shadow-[0_12px_28px_-20px_rgba(60,45,25,0.18)] ${active ? 'bg-[#1a1714] text-white' : 'bg-white'}`
-                        : active
-                          ? 'bg-[#c9a97a]/[0.10]'
-                          : ''
+                      active ? 'bg-[#a85d2e]/[0.12]' : ''
                     }`}
                     aria-current={active ? 'page' : undefined}
                   >
-                    <span className={`transition-colors duration-150 ${
-                      item.id === 'trainer'
-                        ? active ? 'text-white' : 'text-[#c9a97a]'
-                        : active ? 'text-[#c9a97a]' : 'text-ink/30'
-                    }`}>
+                    <span className={`transition-colors duration-150 ${active ? 'text-[#7A3F18]' : 'text-ink/30'}`}>
                       {active ? item.iconFilled : item.icon}
                     </span>
-                    <span className={`truncate text-[0.54rem] font-medium leading-none transition-colors duration-150 ${
-                      item.id === 'trainer'
-                        ? active ? 'text-white/82' : 'text-ink/34'
-                        : active ? 'text-[#c9a97a]' : 'text-ink/30'
+                    <span className={`truncate text-[0.52rem] font-medium leading-none transition-colors duration-150 ${
+                      active ? 'text-[#7A3F18]' : 'text-ink/30'
                     }`}>
                       {item.label}
                     </span>

@@ -1,0 +1,32 @@
+{
+  "hash": "534b58ef",
+  "configHash": "0ac29c57",
+  "lockfileHash": "e3b0c442",
+  "browserHash": "cc10e8bd",
+  "optimized": {
+    "react-dom/client": {
+      "src": "../../speechcode/node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "f1f6a248",
+      "needsInterop": true
+    },
+    "react": {
+      "src": "../../speechcode/node_modules/.pnpm/react@18.3.1/node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "529a55a0",
+      "needsInterop": true
+    },
+    "react/jsx-dev-runtime": {
+      "src": "../../speechcode/node_modules/.pnpm/react@18.3.1/node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "1d651099",
+      "needsInterop": true
+    }
+  },
+  "chunks": {
+    "react-BIkGU8up": {
+      "file": "react-BIkGU8up.js",
+      "isDynamicEntry": false
+    }
+  }
+}

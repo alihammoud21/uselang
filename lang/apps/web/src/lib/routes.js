@@ -9,6 +9,8 @@ export const APP_ROUTES = {
   signup: '/signup',
   onboarding: '/onboarding',
   app: '/app',
+  train: '/train',
+  globe: '/globe',
   trainer: '/trainer',
   history: '/progress',
   downloads: '/downloads',
@@ -25,6 +27,7 @@ const PROTECTED_ROUTES = new Set([
   APP_ROUTES.legacyHistory,
   APP_ROUTES.settings,
   APP_ROUTES.onboarding,
+  // train and globe are public preview pages — auth optional
 ])
 
 export function isProtectedRoute(pathname) {

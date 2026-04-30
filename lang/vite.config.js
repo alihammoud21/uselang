@@ -5,6 +5,8 @@ import tailwindcss from '@tailwindcss/vite'
 import { defineConfig, loadEnv } from 'vite'
 import { handler as adminUsageHandler } from './netlify/functions/admin-usage.js'
 import { handler as savePracticeHandler } from './netlify/functions/save-practice.js'
+import { handler as tutorSessionHandler } from './netlify/functions/tutor-session.js'
+import { handler as translateHandler } from './netlify/functions/translate.js'
 import { handler as voiceSessionHandler } from './netlify/functions/voice-session.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -43,10 +45,31 @@ function createViteNetlifyMiddleware(handler) {
   }
 }
 
+function spaFallbackPlugin() {
+  return {
+    name: 'spa-fallback',
+    configureServer(server) {
+      // Serve index.html for all non-asset, non-API routes (SPA fallback)
+      server.middlewares.use((req, res, next) => {
+        const url = req.url || '/'
+        const isAsset = /\.(js|jsx|ts|tsx|css|png|jpg|jpeg|svg|ico|woff|woff2|ttf|json|map)(\?|$)/.test(url)
+        const isApi = url.startsWith('/api/')
+        const isVite = url.startsWith('/@')
+        if (!isAsset && !isApi && !isVite && req.method === 'GET') {
+          req.url = '/'
+        }
+        next()
+      })
+    },
+  }
+}
+
 function localApiPlugin() {
   const voiceMiddleware = createViteNetlifyMiddleware(voiceSessionHandler)
   const savePracticeMiddleware = createViteNetlifyMiddleware(savePracticeHandler)
   const adminUsageMiddleware = createViteNetlifyMiddleware(adminUsageHandler)
+  const tutorMiddleware = createViteNetlifyMiddleware(tutorSessionHandler)
+  const translateMiddleware = createViteNetlifyMiddleware(translateHandler)
 
   return {
     name: 'local-api-plugin',
@@ -56,7 +79,9 @@ function localApiPlugin() {
         res.end(JSON.stringify({ ok: true }))
       })
       server.middlewares.use('/api/voice-session', voiceMiddleware)
+      server.middlewares.use('/api/tutor-session', tutorMiddleware)
       server.middlewares.use('/api/save-practice', savePracticeMiddleware)
+      server.middlewares.use('/api/translate', translateMiddleware)
       server.middlewares.use('/api/admin-usage', adminUsageMiddleware)
     },
   }
@@ -67,9 +92,13 @@ export default defineConfig(({ mode }) => {
   Object.assign(process.env, env)
   const apiProxyTarget = env.VITE_DEV_API_TARGET || 'http://127.0.0.1:8788'
   const useEmbeddedApi = env.VITE_USE_EMBEDDED_API !== 'false'
+  if (mode !== 'production' && useEmbeddedApi && !process.env.LANG_DEV_MODE) {
+    process.env.LANG_DEV_MODE = '1'
+  }
 
   return {
-    plugins: [react(), tailwindcss(), useEmbeddedApi ? localApiPlugin() : null].filter(Boolean),
+    appType: 'spa',
+    plugins: [spaFallbackPlugin(), react(), tailwindcss(), useEmbeddedApi ? localApiPlugin() : null].filter(Boolean),
     root: path.resolve(__dirname, 'apps/web'),
     publicDir: path.resolve(__dirname, 'apps/web/public'),
     build: {

@@ -28,16 +28,19 @@ export function usePwaPrompt() {
       return undefined
     }
 
-    const dismissed = localStorage.getItem(STORAGE_KEY) === 'true'
-    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone
-
     const handlePrompt = (event) => {
+      const dismissed = localStorage.getItem(STORAGE_KEY) === 'true'
+      const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone
+
+      if (dismissed || standalone) {
+        return
+      }
+
       event.preventDefault()
 
-      if (!dismissed && !standalone) {
-        setDeferredPrompt(event)
-        setVisible(true)
-      }
+      // Keep a reference so install() can call prompt() from user action.
+      setDeferredPrompt(event)
+      setVisible(true)
     }
 
     window.addEventListener('beforeinstallprompt', handlePrompt)

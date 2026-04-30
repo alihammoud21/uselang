@@ -37,7 +37,9 @@ final class GemmaService: ObservableObject {
         guard modelManager.state == .ready else {
             throw GemmaServiceError.modelNotReady
         }
-        throw GemmaServiceError.unsupportedDevice
+        isLoading = true
+        defer { isLoading = false }
+        throw GemmaServiceError.generationFailed("The on-device Gemma runtime is not linked into this Xcode target yet. The model can download, but local inference still needs the native runtime integration.")
     }
 
     func unloadModel() {
@@ -48,7 +50,9 @@ final class GemmaService: ObservableObject {
         guard isLoaded else {
             throw GemmaServiceError.modelNotReady
         }
-        throw GemmaServiceError.unsupportedDevice
+        isGenerating = true
+        defer { isGenerating = false }
+        throw GemmaServiceError.generationFailed("Gemma local generation is not linked into this target yet.")
     }
 
     func generateStructured(prompt: String) async throws -> [String: Any] {

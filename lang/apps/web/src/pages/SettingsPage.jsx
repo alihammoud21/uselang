@@ -195,6 +195,30 @@ function SettingsForm({ auth, route }) {
           </div>
         </SettingsGroup>
 
+        <SettingsGroup title="Offline and downloads">
+          <div className="grid gap-2">
+            <div className="rounded-[1rem] bg-[#faf7f2] px-3.5 py-3">
+              <p className="text-[0.78rem] font-medium text-ink/55">Offline behavior</p>
+              <p className="mt-1 text-[0.72rem] leading-snug text-ink/38">
+                Saved phrases, homework prompts, and downloaded coach audio stay available when the live tutor is offline.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => route.navigate(APP_ROUTES.downloads)}
+              className="flex items-center justify-between rounded-[1rem] bg-[#faf7f2] px-3.5 py-3 text-left"
+            >
+              <div>
+                <p className="text-[0.78rem] font-medium text-ink/55">Download management</p>
+                <p className="mt-1 text-[0.72rem] leading-snug text-ink/38">
+                  Open Library to replay, remove, and keep saved phrases ready offline.
+                </p>
+              </div>
+              <span className="text-[0.72rem] font-semibold text-[#c9a97a]">Open</span>
+            </button>
+          </div>
+        </SettingsGroup>
+
         {!isPro ? (
           <SettingsGroup title="Subscription">
             <button

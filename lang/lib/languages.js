@@ -60,7 +60,7 @@ export const SUPPORTED_LANGUAGES = [
     label: 'Mandarin',
     locale: 'zh-CN',
     sttCode: 'zh-CN',
-    ttsModel: 'aura-2-ling-zh',
+    ttsModel: '',
     tutorLabel: 'Mandarin Chinese',
   },
   {

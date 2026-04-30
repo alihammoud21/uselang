@@ -13,7 +13,14 @@
     "build": "vite build --config vite.config.js && node scripts/write-redirects.mjs",
     "preview:netlify": "npm run build && vite preview --config vite.config.js --host 0.0.0.0 --port 4173",
     "preview": "vite preview --config vite.config.js",
-    "lint": "eslint ."
+    "video:studio": "remotion studio remotion/index.ts",
+    "video:render:appstore": "remotion render remotion/index.ts LangAppPreview69 out/lang-app-preview-886x1920.mp4",
+    "lint": "eslint .",
+    "netlify:dev": "npx netlify dev",
+    "mobile:dev": "npm --prefix apps/uselang-app run start",
+    "mobile:ios": "npm --prefix apps/uselang-app run ios",
+    "mobile:android": "npm --prefix apps/uselang-app run android",
+    "tutor:dev": "sh -c 'npm run api:dev & sleep 2 && npm run mobile:dev'"
   },
   "dependencies": {
     "express": "^5.2.1",
@@ -22,10 +29,12 @@
     "framer-motion": "^12.9.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "remotion": "^4.0.448",
     "tinyglobby": "^0.2.16"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@remotion/cli": "^4.0.448",
     "@tailwindcss/vite": "^4.1.4",
     "@vitejs/plugin-react": "^6.0.1",
     "eslint": "^9.39.4",

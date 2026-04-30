@@ -41,7 +41,7 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<key>UseLangWebURL</key>
-	<string>$(USELANG_WEB_SCHEME)://$(USELANG_WEB_HOST)$(USELANG_WEB_PATH)</string>
+    <key>UseLangWebURL</key>
+    <string>$(USELANG_WEB_SCHEME)://$(USELANG_WEB_HOST)$(USELANG_WEB_PATH)</string>
 </dict>
 </plist>

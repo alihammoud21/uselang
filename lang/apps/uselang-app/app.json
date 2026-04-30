@@ -1,0 +1,70 @@
+{
+  "expo": {
+    "name": "UseLang",
+    "slug": "uselang-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "uselang",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.uselang.app",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "UseLang needs microphone access so you can practice speaking languages.",
+        "NSSpeechRecognitionUsageDescription": "UseLang uses speech recognition to understand your pronunciation.",
+        "NSCameraUsageDescription": "UseLang uses the camera to translate text from photos."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+          "backgroundColor": "#FAFAF8"
+      },
+      "package": "com.uselang.app",
+      "minSdkVersion": 26,
+      "permissions": [
+        "RECORD_AUDIO",
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "react-native-litert-lm",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "UseLang needs camera access to translate text from photos."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "UseLang needs microphone access so you can practice speaking."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "UseLang needs microphone access so you can practice speaking.",
+          "speechRecognitionPermission": "UseLang uses speech recognition to understand your pronunciation.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.as"
+          ]
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#FAFAF8"
+    }
+  }
+}

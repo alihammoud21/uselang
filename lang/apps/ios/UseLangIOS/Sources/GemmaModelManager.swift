@@ -16,8 +16,6 @@ final class GemmaModelManager: ObservableObject {
     private let modelDir: URL
     private let modelFilename = "gemma-4-e2b-it.task"
 
-    private static let kModelURL = "https://www.kaggle.com/api/v1/models/google/gemma-4-e2b-it-litert/versions/1/download"
-
     init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         modelDir = appSupport.appendingPathComponent("GemmaModels", isDirectory: true)
@@ -64,7 +62,33 @@ final class GemmaModelManager: ObservableObject {
     }
 
     func downloadModel() async throws {
-        state = .error("On-device Gemma runtime is not installed in this Xcode target yet.")
+        guard isDeviceSupported else {
+            state = .unsupported
+            throw GemmaServiceError.unsupportedDevice
+        }
+
+        guard let bundledURL = Bundle.main.url(forResource: "gemma-4-e2b-it", withExtension: "task") else {
+            let message = "Bundle gemma-4-e2b-it.task with the app. Remote Gemma model downloads are disabled."
+            state = .error(message)
+            throw GemmaServiceError.generationFailed(message)
+        }
+
+        let fileManager = FileManager.default
+        if !fileManager.fileExists(atPath: modelDir.path) {
+            try fileManager.createDirectory(at: modelDir, withIntermediateDirectories: true)
+        }
+
+        state = .downloading(progress: 0.1)
+
+        if fileManager.fileExists(atPath: modelFileURL.path) {
+            try fileManager.removeItem(at: modelFileURL)
+        }
+
+        try fileManager.copyItem(at: bundledURL, to: modelFileURL)
+
+        let attrs = try fileManager.attributesOfItem(atPath: modelFileURL.path)
+        modelSizeBytes = (attrs[.size] as? Int64) ?? 0
+        state = .ready
     }
 
     func deleteModel() throws {

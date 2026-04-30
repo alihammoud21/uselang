@@ -8,7 +8,6 @@ import { APP_ROUTES, isKnownRoute, isProtectedRoute } from '@/lib/routes'
 import { UseLangLogo } from '@/components/UseLangLogo'
 import { isNativeShell } from '@/lib/native-shell'
 import { AuthPage } from '@/pages/AuthPage'
-import { HistoryPage } from '@/pages/HistoryPage'
 import { LearningPage } from '@/pages/LearningPage'
 import { MarketingPage } from '@/pages/MarketingPage'
 import { HowItWorksPage } from '@/pages/HowItWorksPage'
@@ -18,8 +17,37 @@ import { DownloadPage } from '@/pages/DownloadPage'
 import { OnboardingPage } from '@/pages/OnboardingPage'
 import { DownloadsPage } from '@/pages/DownloadsPage'
 import { SettingsPage } from '@/pages/SettingsPage'
-import { TrainerPage } from '@/pages/TrainerPage'
 import { DocsPage } from '@/pages/DocsPage'
+import { TrainPage } from '@/pages/TrainPage'
+import { GlobePage } from '@/pages/GlobePage'
+import { HistoryPage } from '@/pages/HistoryPage'
+
+// Dev preview mode: set localStorage.uselang_preview = '1' at runtime to bypass auth
+function isPreviewMode() {
+  return typeof window !== 'undefined' && !!localStorage.getItem('uselang_preview')
+}
+
+const PREVIEW_AUTH = {
+  status: 'ready',
+  session: { localId: 'preview', email: 'preview@uselang.app' },
+  profile: {
+    email: 'preview@uselang.app',
+    languageLearning: 'fr',
+    nativeLanguage: 'en',
+    goal: 'travel',
+    confidenceLevel: 'beginner',
+    tutorStyle: 'conversational',
+    confidenceScore: 42,
+  },
+  hasOnboarded: true,
+  signIn: () => {},
+  signUp: () => {},
+  signOut: () => {},
+  updateProfile: async () => {},
+  getValidSession: async () => null,
+  refreshGoogleReadiness: () => {},
+}
+
 const PAGE_TRANSITION = {
   initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
@@ -37,8 +65,12 @@ function resolvePage(pathname, auth, route) {
       return <OnboardingPage auth={auth} route={route} />
     case APP_ROUTES.app:
       return <LearningPage auth={auth} route={route} />
+    case APP_ROUTES.train:
+      return <TrainPage auth={auth} route={route} />
+    case APP_ROUTES.globe:
+      return <GlobePage auth={auth} route={route} />
     case APP_ROUTES.trainer:
-      return <TrainerPage auth={auth} route={route} />
+      return <LearningPage auth={auth} route={route} />
     case APP_ROUTES.history:
       return <HistoryPage auth={auth} route={route} />
     case APP_ROUTES.downloads:
@@ -83,15 +115,17 @@ function BootingScreen() {
 
 export default function App() {
   const route = useRoute()
-  const auth = useAuth()
+  const _auth = useAuth()
+  const auth = isPreviewMode() ? PREVIEW_AUTH : _auth
   const pwa = usePwaPrompt()
   const { navigate, pathname } = route
 
   useEffect(() => {
+    if (isPreviewMode()) return // skip all redirects in preview mode
     if (auth.status !== 'ready') return
 
-    if (pathname === APP_ROUTES.legacyHistory) {
-      navigate(APP_ROUTES.history, { replace: true })
+    if (pathname === APP_ROUTES.legacyHistory || pathname === APP_ROUTES.trainer) {
+      navigate(APP_ROUTES.app, { replace: true })
       return
     }
     if (isNativeShell() && pathname === APP_ROUTES.home) {
