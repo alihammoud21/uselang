@@ -23,7 +23,17 @@
  *   - isGemmaSupported(): boolean
  */
 
-import { createLLM, GEMMA_4_E2B_IT } from "react-native-litert-lm";
+// Dynamic import — native module may not exist (Expo Go, missing pods, etc.)
+// If it fails, the engine falls back to the deterministic stub automatically.
+let createLLM: any = null;
+let GEMMA_4_E2B_IT: any = null;
+try {
+  const mod = require("react-native-litert-lm");
+  createLLM = mod.createLLM;
+  GEMMA_4_E2B_IT = mod.GEMMA_4_E2B_IT;
+} catch (e) {
+  console.warn("[gemma-engine] react-native-litert-lm not available — will use stub fallback");
+}
 import { stubChat, stubGenerateTutorJson, getCuratedPhonetic, stripQuestionWrapper, labelToCode, pinyinToSayLike, getMandariTipForPinyin } from "./gemma-stub";
 import { runWithTimeout, TimeoutError } from "./safe-async";
 
@@ -69,6 +79,10 @@ export interface GemmaEngineState {
 let llm: ReturnType<typeof createLLM> | null = null;
 
 function detectLiteRT(): boolean {
+  if (!createLLM) {
+    console.warn("[gemma] INIT: createLLM not available — native module missing");
+    return false;
+  }
   try {
     llm = createLLM();
     console.log("[gemma] INIT: LiteRT-LM native module detected");
