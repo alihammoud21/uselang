@@ -720,14 +720,23 @@ export async function generateTutorJson(
   }
 
   if (isGarbage) {
-    console.warn("[gemma-engine] generateTutorJson: empty/echoed/garbage translation — falling back to stub");
-    return stubGenerateTutorJson(messages);
+    console.warn("[gemma-engine] generateTutorJson: empty/echoed/garbage translation — falling back to stub+composition");
+    return stubWithOnlineFallback(messages);
   }
 
   // ── Merge real translation with stub formatting ────────────────────────────
   const stubResult = stubGenerateTutorJson(messages);
   stubResult.naturalPhrase = translation;
   stubResult.audioText = translation;
+
+  // Fix: also update audioSegments so TTS plays the Gemma translation,
+  // not the stub's fallback phrase ("你好吗" / "¿Cómo estás?").
+  const nativeCodeForAudio = systemContent.match(/user speaks\s+([A-Z][a-zA-Z]+)/i)?.[1] || "English";
+  const nativeCodeResolved = labelToCode(nativeCodeForAudio.trim());
+  stubResult.audioSegments = [
+    { lang: nativeCodeResolved, text: `Here's how to say it in ${targetLabel}:` },
+    { lang: targetCode,         text: translation },
+  ];
 
   // ── Phonetic: already extracted from combined prompt above ────────────────
   // Fall back to curated lookup if the combined prompt didn't produce one.

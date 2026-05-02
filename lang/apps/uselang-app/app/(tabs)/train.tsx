@@ -1942,14 +1942,14 @@ export default function TrainScreen() {
                 placeholder="What do you want to learn?…"
                 placeholderTextColor="rgba(28,23,20,0.40)"
                 value={typedInput}
-                onChangeText={setTypedInput}
+                onChangeText={(t) => { if (t.trim().split(/\s+/).length <= 20) setTypedInput(t); }}
                 onFocus={() => setIsTypingFocused(true)}
                 onBlur={() => setIsTypingFocused(false)}
                 onSubmitEditing={() => { setIsTypingFocused(false); goToQuickSession(typedInput); }}
                 returnKeyType="send"
                 blurOnSubmit={false}
                 editable={aiState === "idle"}
-                maxLength={600}
+                maxLength={200}
               />
               <Pressable
                 onPress={() => goToQuickSession(typedInput)}
@@ -1967,6 +1967,11 @@ export default function TrainScreen() {
                 />
               </Pressable>
             </View>
+            {typedInput.trim().length > 0 && (
+              <Text style={{ textAlign: "right", fontSize: 11, fontFamily: "Geist-Medium", color: "rgba(28,23,20,0.35)", marginTop: 4, paddingRight: 6 }}>
+                {typedInput.trim().split(/\s+/).length} / 20
+              </Text>
+            )}
           </View>
         </KeyboardAvoidingView>
 
@@ -2520,12 +2525,12 @@ export default function TrainScreen() {
                     placeholder="Type a phrase to break down…"
                     placeholderTextColor="rgba(28,23,20,0.40)"
                     value={phraseInput}
-                    onChangeText={setPhraseInput}
+                    onChangeText={(t) => { if (t.trim().split(/\s+/).length <= 20) setPhraseInput(t); }}
                     onSubmitEditing={() => startPhraseSession(phraseInput)}
                     returnKeyType="send"
                     blurOnSubmit={false}
                     editable={!phraseLoading}
-                    maxLength={600}
+                    maxLength={200}
                   />
                   <Pressable
                     onPress={() => startPhraseSession(phraseInput)}
@@ -2543,6 +2548,11 @@ export default function TrainScreen() {
                     />
                   </Pressable>
                 </View>
+                {phraseInput.trim().length > 0 && (
+                  <Text style={{ textAlign: "right", fontSize: 11, fontFamily: "Geist-Medium", color: "rgba(28,23,20,0.35)", marginTop: 4, paddingRight: 6 }}>
+                    {phraseInput.trim().split(/\s+/).length} / 20
+                  </Text>
+                )}
                 {phraseLoading && (
                   <View style={{ alignItems: "center", marginTop: 14 }}>
                     <Text style={{ fontFamily: "Geist-Regular", fontSize: 13, color: "rgba(28,23,20,0.50)" }}>Breaking it down…</Text>

@@ -92,13 +92,44 @@ export function comparePronunciation(target: string, attempt: string): Pronuncia
   // Deduplicate missing list while preserving order.
   const missingSegments = Array.from(new Set(missing));
 
-  const suggestion =
-    rating === "spot-on" ? "Nailed it. Move on or try a slight tone variation."
-    : rating === "close"
-      ? `Very close — focus on ${missingSegments.slice(0, 2).join(" / ") || "the rhythm"} and try again.`
-    : rating === "almost"
-      ? `Almost there. The ${missingSegments[0] ? `"${missingSegments[0]}"` : "ending"} sound didn't come through. Slow down and emphasize it.`
-      : `Not quite. Listen one more time, then attempt slowly — break the phrase into smaller pieces.`;
+  // Rotate suggestions so users don't see the same line every attempt
+  const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+  const focusHint = missingSegments.slice(0, 2).join(" / ") || "the rhythm";
+  const isCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(target);
+
+  let suggestion: string;
+  if (rating === "spot-on") {
+    suggestion = pick([
+      "Nailed it! That sounded great.",
+      "Perfect pronunciation — you've got this!",
+      "Spot on! Try it a bit faster next time.",
+    ]);
+  } else if (rating === "close") {
+    const closeTips = [
+      `Very close — focus on ${focusHint} and try again.`,
+      `Almost perfect! Pay extra attention to ${focusHint}.`,
+      `So close! Try exaggerating the ${focusHint} sound.`,
+      `Great attempt! Just polish ${focusHint} and you'll have it.`,
+    ];
+    if (isCJK) closeTips.push("Pay attention to the rising and falling tones — they change the meaning.");
+    suggestion = pick(closeTips);
+  } else if (rating === "almost") {
+    const almostTips = [
+      `Almost there. The ${missingSegments[0] ? `"${missingSegments[0]}"` : "ending"} sound didn't come through. Slow down and emphasize it.`,
+      `Getting closer! Try saying it one word at a time, then speed up.`,
+      `Good effort! Focus on matching each syllable to what you hear.`,
+      `You're making progress! Listen once more, then try matching the rhythm.`,
+    ];
+    if (isCJK) almostTips.push("Try to match the pitch pattern — listen for which syllables go up vs. down.");
+    suggestion = pick(almostTips);
+  } else {
+    suggestion = pick([
+      "Not quite. Listen one more time, then attempt slowly — break the phrase into smaller pieces.",
+      "Let's try a different approach: listen to just the first half and repeat that.",
+      "Don't give up! Tap 'Hear it' and focus on matching the first word only.",
+      "Take it slow — even native speakers had to learn one sound at a time.",
+    ]);
+  }
 
   return { score, rating, missingSegments, suggestion };
 }

@@ -59,6 +59,7 @@ import { comparePronunciation, type PronunciationFeedback } from "@/lib/pronunci
 import { speakRoutedText, stopRoutedTts } from "@/lib/tts-router";
 import { prewarmOfflineTts } from "@/lib/offline-tts";
 import { TongueDiagram } from "@/components/TongueDiagram";
+import { addXP } from "@/lib/progress-store";
 
 const AnimatedView = Animated.createAnimatedComponent(View);
 
@@ -75,6 +76,80 @@ function phonemeFromResponse(res: TutorResponse | null): string {
     res.correctionLine?.match(/['"]([^'"]{1,5})['"]/) ||
     res.pronunciationTip?.match(/['"]([^'"]{1,5})['"]/);
   return m?.[1] || "r";
+}
+
+// ── Confetti celebration ──────────────────────────────────────────────────
+const CONFETTI_COLORS = [
+  "#22C55E", "#FFB347", "#FF6B6B", "#4FC3F7", "#AB47BC",
+  "#FFEE58", "#26A69A", "#EF5350", "#42A5F5", "#FFA726",
+  "#66BB6A", "#EC407A", "#29B6F6", "#FF7043", "#9CCC65",
+  "#7E57C2", "#FFCA28", "#26C6DA", "#D4E157", "#F06292",
+];
+
+function ConfettiDot({ color, index }: { color: string; index: number }) {
+  const translateY = useSharedValue(-10);
+  const translateX = useSharedValue(0);
+  const opacity = useSharedValue(1);
+  const left = ((index * 37 + 13) % 100);
+  const size = 5 + (index % 4) * 2;
+  const delay = (index * 80) % 600;
+
+  React.useEffect(() => {
+    translateY.value = withSequence(
+      withTiming(-10, { duration: 0 }),
+      withTiming(0, { duration: delay, easing: Easing.linear }),
+      withRepeat(
+        withTiming(320, { duration: 1800 + (index % 5) * 200, easing: Easing.in(Easing.quad) }),
+        -1,
+        false,
+      ),
+    );
+    translateX.value = withRepeat(
+      withSequence(
+        withTiming((index % 2 ? 1 : -1) * (8 + index % 12), { duration: 600, easing: Easing.inOut(Easing.sin) }),
+        withTiming((index % 2 ? -1 : 1) * (8 + index % 12), { duration: 600, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+      true,
+    );
+    opacity.value = withSequence(
+      withTiming(1, { duration: delay }),
+      withTiming(1, { duration: 1200 }),
+      withTiming(0, { duration: 600 }),
+      withTiming(1, { duration: 0 }),
+      withRepeat(
+        withSequence(
+          withTiming(1, { duration: 1200 }),
+          withTiming(0, { duration: 600 }),
+          withTiming(1, { duration: 0 }),
+        ),
+        -1,
+        false,
+      ),
+    );
+  }, []);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }, { translateX: translateX.value }],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        {
+          position: "absolute",
+          left: `${left}%`,
+          top: -8,
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: color,
+        },
+        animStyle,
+      ]}
+    />
+  );
 }
 
 // Color tokens for the feedback card. Kept here (not in qStyles) because
@@ -195,6 +270,8 @@ export default function QuickSessionScreen() {
   const [feedback, setFeedback] = useState<PronunciationFeedback | null>(null);
   const [mastered, setMastered] = useState(false);
   const attemptedRef = useRef(false);
+  const attemptCountRef = useRef(0);
+  const xpAwardedRef = useRef(false);
   const speechSessionRef = useRef<NativeSpeechSession | null>(null);
   // Live mic level for the orb's reactive scaling while listening.
   const [, setMicLevel] = useState(0);
@@ -346,6 +423,8 @@ export default function QuickSessionScreen() {
     setFeedback(null);
     setAiState("listening");
     attemptedRef.current = true;
+    attemptCountRef.current += 1;
+    const attemptNum = attemptCountRef.current;
     try {
       // Use requiresOnDevice: false so speech recognition works even when
       // on-device packs aren't installed for the target language. The system
@@ -368,21 +447,40 @@ export default function QuickSessionScreen() {
       setFeedback(fb);
       setShowCoach(true);
 
+      // Progressive threshold: after 4+ attempts, accept 70% as mastered
+      // so users don't get stuck and lose motivation
+      const masteryThreshold = attemptNum >= 4 ? 0.70 : 0.80;
+
       // AI ALWAYS speaks back after every attempt
       const targetPhrase = response.naturalPhrase || "";
-      if (fb.score >= 0.80) {
-        // ── PASS ──
+      if (fb.score >= masteryThreshold) {
+        // ── PASS — award XP, save phrase, celebrate ──
         setMastered(true);
+        if (!xpAwardedRef.current) {
+          xpAwardedRef.current = true;
+          addXP(25).catch(() => {});
+          handleSave();
+        }
         setAiState("speaking");
         try {
-          await speakRoutedText({ text: "Perfect! You've got it.", languageCode: nativeLang });
+          const celebrationLine = attemptNum >= 4
+            ? "Great effort! You've got it. Practice makes perfect."
+            : "Perfect! You've got it.";
+          await speakRoutedText({ text: celebrationLine, languageCode: nativeLang });
         } catch {}
         setAiState("idle");
       } else {
-        // ── FAIL — AI speaks coaching tip then replays the target phrase ──
+        // ── FAIL — progressive coaching based on attempt count ──
         setAiState("speaking");
         try {
-          const coachLine = fb.suggestion || "Try again — listen carefully.";
+          let coachLine: string;
+          if (attemptNum === 1 || attemptNum === 2) {
+            coachLine = fb.suggestion || "Try again — listen carefully.";
+          } else if (attemptNum === 3) {
+            coachLine = "Try saying it slower, one word at a time. Break it into pieces.";
+          } else {
+            coachLine = "You're almost there! One more try — you've got this.";
+          }
           await speakRoutedText({ text: coachLine, languageCode: nativeLang });
           await new Promise((r) => setTimeout(r, 200));
           await speakRoutedText({ text: targetPhrase, languageCode: learnLang });
@@ -727,16 +825,67 @@ export default function QuickSessionScreen() {
               </AnimatedView>
             ) : null}
 
-            {/* ── Mastered success banner ─────────────────────────── */}
+            {/* ── Mastery celebration ─────────────────────────── */}
             {mastered ? (
-              <AnimatedView entering={FadeInUp.duration(320).easing(Easing.out(Easing.cubic))}>
+              <AnimatedView entering={FadeInUp.duration(400).easing(Easing.out(Easing.cubic))}>
                 <View style={qStyles.masteredBanner}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Ionicons name="checkmark-circle" size={22} color="#1F8A4C" />
-                    <View style={{ flex: 1 }}>
-                      <Text style={qStyles.masteredTitle}>You can say this now</Text>
-                      <Text style={qStyles.masteredSub}>{response.naturalPhrase}</Text>
+                  {/* Confetti dots */}
+                  <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, overflow: "hidden", borderRadius: 22 }} pointerEvents="none">
+                    {CONFETTI_COLORS.map((color, i) => (
+                      <ConfettiDot key={i} color={color} index={i} />
+                    ))}
+                  </View>
+
+                  <View style={{ alignItems: "center", paddingTop: 8, paddingBottom: 4 }}>
+                    <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: "rgba(34,197,94,0.15)", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                      <Ionicons name="checkmark-circle" size={32} color="#1F8A4C" />
                     </View>
+                    <Text style={{ fontSize: 20, fontWeight: "800", color: "#1F8A4C", marginBottom: 4 }}>
+                      You can say this now!
+                    </Text>
+                    <Text style={{ fontSize: 16, fontWeight: "600", color: SESSION.ink2, textAlign: "center", marginBottom: 4 }}>
+                      {response.naturalPhrase}
+                    </Text>
+                    {response.phonetic ? (
+                      <Text style={{ fontSize: 13, color: SESSION.muted, fontStyle: "italic", marginBottom: 6 }}>
+                        {response.phonetic}
+                      </Text>
+                    ) : null}
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(168,93,46,0.12)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginTop: 4 }}>
+                      <Ionicons name="star" size={13} color={SESSION.amber} />
+                      <Text style={{ fontSize: 12, fontWeight: "700", color: SESSION.amber }}>+25 XP</Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: "row", gap: 10, marginTop: 18 }}>
+                    <Pressable
+                      onPress={() => {
+                        stopTutorAudio().catch(() => {});
+                        if (router.canGoBack()) router.back();
+                        else router.replace("/(tabs)");
+                      }}
+                      style={({ pressed }) => ({
+                        flex: 1, paddingVertical: 13, borderRadius: 16,
+                        backgroundColor: SESSION.ink, alignItems: "center",
+                        opacity: pressed ? 0.85 : 1,
+                      })}
+                    >
+                      <Text style={{ color: "#FFF", fontSize: 14, fontWeight: "700" }}>Learn another phrase</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        stopTutorAudio().catch(() => {});
+                        router.replace("/(tabs)");
+                      }}
+                      style={({ pressed }) => ({
+                        flex: 1, paddingVertical: 13, borderRadius: 16,
+                        backgroundColor: "rgba(255,255,255,0.7)", borderWidth: 1,
+                        borderColor: SESSION.hair, alignItems: "center",
+                        opacity: pressed ? 0.85 : 1,
+                      })}
+                    >
+                      <Text style={{ color: SESSION.ink, fontSize: 14, fontWeight: "700" }}>Done</Text>
+                    </Pressable>
                   </View>
                 </View>
               </AnimatedView>
@@ -1386,23 +1535,13 @@ const qStyles = {
     marginBottom: 22,
   },
   masteredBanner: {
-    backgroundColor: "rgba(34,197,94,0.10)",
-    borderRadius: 18,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
+    backgroundColor: "rgba(34,197,94,0.08)",
+    borderRadius: 22,
+    paddingVertical: 24,
+    paddingHorizontal: 22,
     borderWidth: 1.5,
-    borderColor: "rgba(34,197,94,0.30)",
+    borderColor: "rgba(34,197,94,0.25)",
     marginBottom: 22,
-  },
-  masteredTitle: {
-    fontSize: 16,
-    fontWeight: "700" as const,
-    color: "#1F8A4C",
-  },
-  masteredSub: {
-    fontSize: 14,
-    fontWeight: "600" as const,
-    color: SESSION.ink2,
-    marginTop: 2,
+    overflow: "hidden" as const,
   },
 };
