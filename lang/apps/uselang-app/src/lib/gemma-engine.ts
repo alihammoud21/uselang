@@ -610,9 +610,9 @@ export async function generateTutorJson(
     || userContent.trim();
   const phraseMatch = stripQuestionWrapper(rawUserPhrase);
 
-  // Hard cap: never send more than 8 words to the native model.
-  // Longer inputs cause 4 sequential inference calls which OOM on device.
-  const MAX_PHRASE_WORDS = 8;
+  // Hard cap: never send more than 20 words to the native model.
+  // Very long inputs may cause slower inference but most real phrases are < 15 words.
+  const MAX_PHRASE_WORDS = 20;
   const phraseWords = phraseMatch.split(/\s+/);
   const cappedPhrase = phraseWords.length > MAX_PHRASE_WORDS
     ? phraseWords.slice(0, MAX_PHRASE_WORDS).join(" ")

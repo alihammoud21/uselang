@@ -789,6 +789,7 @@ export default function TrainScreen() {
   const [phraseComplete, setPhraseComplete] = useState(false);
   const phraseSpeechRef = useRef<NativeSpeechSession | null>(null);
   const phraseOrbDebounceRef = useRef(false);
+  const phraseScrollRef = useRef<ScrollView>(null);
   const [phraseMicLevel, setPhraseMicLevel] = useState(0);
   // Scenario test & coaching state
   const [scenarioAttemptText, setScenarioAttemptText] = useState("");
@@ -1775,6 +1776,8 @@ export default function TrainScreen() {
     const goToQuickSession = (phrase: string) => {
       const trimmed = phrase.trim();
       if (!trimmed) return;
+      // Stop any TTS that's still playing to prevent dual-voice crash
+      stopRoutedTts().catch(() => {});
       conversationActiveRef.current = false;
       setConversationActive(false);
       setAiState("idle");
@@ -1936,7 +1939,7 @@ export default function TrainScreen() {
                   fontFamily: "Geist-Medium", fontWeight: "500",
                   color: "#1C1714", paddingVertical: 6,
                 }}
-                placeholder={`Type in ${language.label}…`}
+                placeholder="What do you want to learn?…"
                 placeholderTextColor="rgba(28,23,20,0.40)"
                 value={typedInput}
                 onChangeText={setTypedInput}
@@ -2127,18 +2130,19 @@ export default function TrainScreen() {
 
         const fb = comparePronunciation(targetText, clean);
         setPhraseFeedback(fb);
+        // Auto-scroll so the feedback card is visible
+        requestAnimationFrame(() => phraseScrollRef.current?.scrollToEnd({ animated: true }));
 
+        let updated: ReturnType<typeof phraseScoreChunk> | null = null;
         if (phraseSession) {
-          const updated = phraseScoreChunk(
+          updated = phraseScoreChunk(
             phraseSession,
             phraseSession.currentChunkIndex,
             fb.score,
           );
           setPhraseSession(updated);
 
-          if (updated.phase === "final") {
-            // Small delay before final attempt prompt
-          } else if (updated.phase === "completed") {
+          if (updated.phase === "completed") {
             setPhraseComplete(true);
           }
         }
@@ -2147,7 +2151,34 @@ export default function TrainScreen() {
         // AI ALWAYS speaks back after every chunk attempt
         setPhraseCoachingSpeaking(true);
         try {
-          if (fb.score >= PHRASE_MASTERY_THRESHOLD) {
+          if (fb.score >= PHRASE_MASTERY_THRESHOLD && updated) {
+            if (updated.phase === "final") {
+              // All chunks mastered → move to full sentence
+              await speakRoutedText({ text: "Great! Now say the full sentence.", languageCode: nativeCode });
+              prefetchDeepgramTts(updated.fullTarget, language.code);
+              await new Promise((r) => setTimeout(r, 150));
+              await speakRoutedText({ text: updated.fullTarget, languageCode: language.code });
+              setPhraseCoachingSpeaking(false);
+              // Auto-open mic for full sentence
+              await new Promise((r) => setTimeout(r, 400));
+              listenForFinalSentence();
+              return;
+            }
+            // Next chunk exists → auto-advance
+            const nextChunk = updated.chunks[updated.currentChunkIndex];
+            if (nextChunk) {
+              await speakRoutedText({ text: "Nice! Moving on.", languageCode: nativeCode });
+              prefetchDeepgramTts(nextChunk.target, language.code);
+              await new Promise((r) => setTimeout(r, 150));
+              await speakRoutedText({ text: nextChunk.target, languageCode: language.code });
+              setPhraseCoachingSpeaking(false);
+              setPhraseFeedback(null);
+              setPhraseAttemptText("");
+              // Auto-open mic for the next chunk
+              await new Promise((r) => setTimeout(r, 400));
+              listenForChunk(nextChunk.target);
+              return;
+            }
             await speakRoutedText({ text: "Nice! Moving on.", languageCode: nativeCode });
           } else {
             const coachLine = fb.suggestion || "Try again — listen carefully.";
@@ -2198,6 +2229,7 @@ export default function TrainScreen() {
 
         const fb = comparePronunciation(phraseSession.fullTarget, clean);
         setPhraseFeedback(fb);
+        requestAnimationFrame(() => phraseScrollRef.current?.scrollToEnd({ animated: true }));
 
         const updated = phraseScoreFinal(phraseSession, fb.score);
         setPhraseSession(updated);
@@ -2261,6 +2293,7 @@ export default function TrainScreen() {
 
         const fb = comparePronunciation(phraseSession.fullTarget, clean);
         setScenarioFeedback(fb);
+        requestAnimationFrame(() => phraseScrollRef.current?.scrollToEnd({ animated: true }));
         const updated = phraseScoreScenario(phraseSession, fb.score);
         setPhraseSession(updated);
         setPhraseAiState("idle");
@@ -2613,7 +2646,7 @@ export default function TrainScreen() {
         {/* Header */}
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 8, paddingBottom: 6 }}>
           <Pressable
-            onPress={() => { setPhraseSession(null); setPhraseInput(""); setPhraseFeedback(null); setPhraseAttemptText(""); setPhraseComplete(false); }}
+            onPress={() => { stopRoutedTts().catch(() => {}); setPhraseSession(null); setPhraseInput(""); setPhraseFeedback(null); setPhraseAttemptText(""); setPhraseComplete(false); setPhraseCoachingSpeaking(false); }}
             hitSlop={12}
             style={({ pressed }) => ({
               flexDirection: "row", alignItems: "center", gap: 6,
@@ -2656,7 +2689,7 @@ export default function TrainScreen() {
           </Text>
         </View>
 
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 12, paddingBottom: 200 }} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={phraseScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 12, paddingBottom: 200 }} showsVerticalScrollIndicator={false}>
           {/* Context */}
           {phraseSession.context ? (
             <Text style={{ fontFamily: "Geist-Regular", fontSize: 13, color: "rgba(28,23,20,0.55)", lineHeight: 18, marginBottom: 16 }}>

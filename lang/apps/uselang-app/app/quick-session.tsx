@@ -49,7 +49,7 @@ import Animated, {
 import { COLORS, SUPPORTED_LANGUAGES } from "@/lib/constants";
 import { postTutorSession, type TutorAudioSegment, type TutorResponse } from "@/lib/tutor-api";
 import { playTutorAudio, stopTutorAudio } from "@/lib/tutor-audio";
-import { pinyinToSayLike } from "@/lib/gemma-stub";
+import { pinyinToSayLike, stripQuestionWrapper } from "@/lib/gemma-stub";
 import { AnimatedMouth } from "@/components/AnimatedMouth";
 import { SphereOrb } from "@/components/SphereOrb";
 import { getUserProfile } from "@/lib/user-store";
@@ -152,7 +152,10 @@ export default function QuickSessionScreen() {
     nativeLang?: string;
   }>();
 
-  const phrase = (typeof params.phrase === "string" ? params.phrase : "").trim();
+  // Strip "How do I say…" wrappers so the tutor teaches the core phrase.
+  // "How do I say I want to go to Chinatown?" → "I want to go to Chinatown"
+  const rawPhrase = (typeof params.phrase === "string" ? params.phrase : "").trim();
+  const phrase = stripQuestionWrapper(rawPhrase) || rawPhrase;
   const [learnLang, setLearnLang] = useState<string>(
     typeof params.learnLang === "string" && params.learnLang ? params.learnLang : "zh",
   );
