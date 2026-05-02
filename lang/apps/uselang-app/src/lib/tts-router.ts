@@ -30,13 +30,15 @@ if (!DEEPGRAM_TTS_KEY) {
 const DEEPGRAM_VOICES: Record<string, string> = {
   en: "aura-asteria-en",
   "en-US": "aura-asteria-en",
-  "en-GB": "aura-orion-en",
+  "en-GB": "aura-asteria-en",
   fr: "aura-2-agathe-fr",
   "fr-FR": "aura-2-agathe-fr",
   "fr-CA": "aura-2-agathe-fr",
-  es: "aura-2-sirio-es",
-  "es-ES": "aura-2-sirio-es",
-  "es-MX": "aura-2-sirio-es",
+  // luna-es is female, warm, and clear — much less deep than sirio-es (male)
+  es: "aura-2-luna-es",
+  "es-ES": "aura-2-luna-es",
+  "es-MX": "aura-2-luna-es",
+  "es-419": "aura-2-luna-es",
   de: "aura-2-hector-de",
   "de-DE": "aura-2-hector-de",
 };
@@ -175,59 +177,84 @@ function ttsCacheSet(key: string, uri: string): void {
   ttsCache.set(key, uri);
 }
 
-async function playDeepgramTts(text: string, voice: string, rate: number): Promise<void> {
+// ── Fetch + cache Deepgram audio (shared by play and prefetch) ────────────
+async function fetchDeepgramAudio(text: string, voice: string): Promise<string> {
   const cacheKey = ttsCacheKey(text, voice);
-
-  // Check cache first — skip network entirely on replay
-  let uri = ttsCache.get(cacheKey);
-  if (uri) {
-    console.log(`[tts-router] cache HIT for "${text.slice(0, 30)}..."`);
-  } else {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4_000);
-
-    let res: Response;
-    try {
-      res = await fetch(
-        `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(voice)}&encoding=mp3`,
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Token ${DEEPGRAM_TTS_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ text }),
-          signal: controller.signal,
-        },
-      );
-    } catch (fetchErr: any) {
-      clearTimeout(timeout);
-      throw new Error(`deepgram_fetch: ${fetchErr?.message || "network error"}`);
-    }
-    clearTimeout(timeout);
-
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => "");
-      throw new Error(`deepgram_${res.status}: ${errBody.slice(0, 200)}`);
-    }
-
-    const buf = await res.arrayBuffer();
-    if (buf.byteLength > MAX_TTS_BYTES) {
-      throw new Error(`deepgram_too_large: ${buf.byteLength} bytes`);
-    }
-
-    // Convert ArrayBuffer to base64 in chunks to avoid stack overflow
-    const bytes = new Uint8Array(buf);
-    const CHUNK = 8192;
-    let binary = "";
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-      binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
-    }
-    const base64 = globalThis.btoa(binary);
-    uri = `data:audio/mpeg;base64,${base64}`;
-    ttsCacheSet(cacheKey, uri);
-    console.log(`[tts-router] cached Deepgram audio (${buf.byteLength} bytes)`);
+  const cached = ttsCache.get(cacheKey);
+  if (cached) {
+    console.log(`[tts-router] cache HIT for "${text.slice(0, 30)}"`);
+    return cached;
   }
+
+  // 2s timeout — fall back to native quickly if Deepgram is slow
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2_000);
+
+  let res: Response;
+  try {
+    res = await fetch(
+      `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(voice)}&encoding=mp3`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Token ${DEEPGRAM_TTS_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ text }),
+        signal: controller.signal,
+      },
+    );
+  } catch (fetchErr: any) {
+    clearTimeout(timeout);
+    throw new Error(`deepgram_fetch: ${fetchErr?.message || "network error"}`);
+  }
+  clearTimeout(timeout);
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => "");
+    throw new Error(`deepgram_${res.status}: ${errBody.slice(0, 200)}`);
+  }
+
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength > MAX_TTS_BYTES) {
+    throw new Error(`deepgram_too_large: ${buf.byteLength} bytes`);
+  }
+
+  // Convert ArrayBuffer to base64 in chunks to avoid stack overflow
+  const bytes = new Uint8Array(buf);
+  const CHUNK = 8192;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + CHUNK, bytes.length)));
+  }
+  const base64 = globalThis.btoa(binary);
+  const uri = `data:audio/mpeg;base64,${base64}`;
+  ttsCacheSet(cacheKey, uri);
+  console.log(`[tts-router] fetched + cached Deepgram audio (${buf.byteLength} bytes)`);
+  return uri;
+}
+
+/**
+ * Pre-warm the Deepgram TTS cache for a phrase so it plays instantly when
+ * `speakRoutedText` is called. Fire-and-forget — errors are silently swallowed.
+ * Ideal for pre-fetching a foreign phrase while the English intro is still playing.
+ */
+export function prefetchDeepgramTts(text: string, languageCode: string): void {
+  if (!DEEPGRAM_TTS_KEY) return;
+  const voice = deepgramVoiceFor(languageCode);
+  if (!voice) return;
+  isOnlineCached().then((online) => {
+    if (!online) return;
+    const cacheKey = ttsCacheKey(text, voice);
+    if (ttsCache.has(cacheKey)) return; // already warm
+    fetchDeepgramAudio(text, voice).catch(() => {
+      // Prefetch failure is silent — speakRoutedText will fall back to native
+    });
+  }).catch(() => {});
+}
+
+async function playDeepgramTts(text: string, voice: string, rate: number): Promise<void> {
+  const uri = await fetchDeepgramAudio(text, voice);
 
   await stopRoutedTts();
   const { sound } = await Audio.Sound.createAsync(

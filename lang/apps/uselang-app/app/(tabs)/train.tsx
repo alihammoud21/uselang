@@ -72,7 +72,7 @@ import {
 import { comparePronunciation, type PronunciationFeedback } from "@/lib/pronunciation-feedback";
 import { saveHomework } from "@/lib/homework-store";
 import { playTutorAudio, playUserAudio, stopTutorAudio, setTutorPlaybackRate } from "@/lib/tutor-audio";
-import { speakRoutedText, stopRoutedTts } from "@/lib/tts-router";
+import { speakRoutedText, stopRoutedTts, prefetchDeepgramTts } from "@/lib/tts-router";
 import { prewarmOfflineTts } from "@/lib/offline-tts";
 import { pinyinToSayLike } from "@/lib/gemma-stub";
 import { chatWithGemma } from "@/lib/gemma-engine";
@@ -2086,10 +2086,14 @@ export default function TrainScreen() {
         // AI intro: speak the phrase aloud so the user hears it
         setPhraseCoachingSpeaking(true);
         try {
+          const foreignText = res.naturalPhrase || trimmed;
+          // Pre-warm Deepgram cache NOW so the foreign phrase plays instantly
+          // after the English intro finishes — eliminates the 5-second gap.
+          prefetchDeepgramTts(foreignText, language.code);
           const introLine = `Let's learn to say: "${trimmed}". In ${language.label}, you say:`;
           await speakRoutedText({ text: introLine, languageCode: nativeCode });
-          await new Promise((r) => setTimeout(r, 400));
-          await speakRoutedText({ text: res.naturalPhrase || trimmed, languageCode: language.code });
+          await new Promise((r) => setTimeout(r, 150));
+          await speakRoutedText({ text: foreignText, languageCode: language.code });
         } catch {}
         setPhraseCoachingSpeaking(false);
         // Advance from intro → practicing
@@ -2147,8 +2151,9 @@ export default function TrainScreen() {
             await speakRoutedText({ text: "Nice! Moving on.", languageCode: nativeCode });
           } else {
             const coachLine = fb.suggestion || "Try again — listen carefully.";
+            prefetchDeepgramTts(targetText, language.code);
             await speakRoutedText({ text: coachLine, languageCode: nativeCode });
-            await new Promise((r) => setTimeout(r, 200));
+            await new Promise((r) => setTimeout(r, 150));
             await speakRoutedText({ text: targetText, languageCode: language.code });
           }
         } catch {}
@@ -2204,8 +2209,9 @@ export default function TrainScreen() {
           if (fb.score >= PHRASE_MASTERY_THRESHOLD) {
             await speakRoutedText({ text: "Great job! Now let's test you in a real scenario.", languageCode: nativeCode });
           } else {
+            prefetchDeepgramTts(phraseSession.fullTarget, language.code);
             await speakRoutedText({ text: fb.suggestion || "Try saying the full sentence again.", languageCode: nativeCode });
-            await new Promise((r) => setTimeout(r, 200));
+            await new Promise((r) => setTimeout(r, 150));
             await speakRoutedText({ text: phraseSession.fullTarget, languageCode: language.code });
           }
         } catch {}
@@ -2291,8 +2297,9 @@ export default function TrainScreen() {
             setSkillUnlockVisible(true);
           } else {
             const coachLine = fb.suggestion || "Not quite — let's practice the tricky parts again.";
+            prefetchDeepgramTts(phraseSession.fullTarget, language.code);
             await speakRoutedText({ text: coachLine, languageCode: nativeCode });
-            await new Promise((r) => setTimeout(r, 200));
+            await new Promise((r) => setTimeout(r, 150));
             await speakRoutedText({ text: phraseSession.fullTarget, languageCode: language.code });
           }
         } catch {}

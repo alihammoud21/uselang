@@ -122,9 +122,13 @@ export async function speakOfflineText({
           Speech.stop();
           finish();
         }, estimatedSpeechMs(body, safeRate * PACED_BASELINE));
+        // Non-English voices on iOS can sound unnaturally deep at pitch 1.0.
+        // A small lift to 1.1 makes zh-CN, es, and fr sound more human.
+        const isEnglish = locale.startsWith("en");
         Speech.speak(body, {
           language: locale,
           rate: PACED_BASELINE * safeRate,
+          pitch: isEnglish ? 1.0 : 1.1,
           onDone: finish,
           onStopped: finish,
           onError: finish,
@@ -174,6 +178,11 @@ export async function stopOfflineTts(): Promise<void> {
 }
 
 function estimatedSpeechMs(text: string, rate: number): number {
+  // CJK characters are each a full syllable (~300-400ms each), while
+  // Latin characters share words and take ~80ms per char. We detect CJK
+  // content and use a generous estimate for both to avoid cutting off speech.
+  const hasCjk = /[\u3000-\u9fff\uac00-\ud7af]/.test(text);
+  const msPerChar = hasCjk ? 350 : 100;
   const multiplier = Math.max(0.5, Math.min(2, rate));
-  return Math.min(16000, Math.max(1800, Math.ceil((text.length * 82) / multiplier)));
+  return Math.min(35_000, Math.max(2_500, Math.ceil((text.length * msPerChar) / multiplier)));
 }
