@@ -508,32 +508,58 @@ async function stubWithOnlineFallback(messages: ChatMessage[]): Promise<Record<s
 
   if (!phraseToTranslate) return stubResult;
 
+  // Long / colloquial phrases (slang, run-ons, >12 words) produce garbage
+  // word-for-word output from the composition engine. Show an honest message
+  // instead so the user understands they need the AI model.
+  const wordCount = phraseToTranslate.trim().split(/\s+/).length;
+  const tooLong = wordCount > 12;
+
+  // Helper to build honest "needs AI model" override
+  const applyNeedsAiModel = () => {
+    const nativeCode2 = messages.find((m) => m.role === "system")?.content
+      .match(/native language (?:is )?([A-Za-z\s]+)/i)?.[1]?.trim() || "en";
+    const tip = `This phrase is too complex for offline mode. Download the AI model in Settings for full ${targetMatch} translation.`;
+    stubResult.naturalPhrase  = phraseToTranslate;
+    stubResult.audioText      = tip;
+    stubResult.literalMeaning = phraseToTranslate;
+    stubResult.phonetic       = "";
+    stubResult.localReply     = tip;
+    stubResult.context        = tip;
+    stubResult.audioSegments  = [{ lang: nativeCode2, text: tip }];
+    stubResult.chunks         = [{ target: phraseToTranslate, english: phraseToTranslate, phonetic: "", tip }];
+  };
+
+  if (tooLong) {
+    console.log(`[gemma-engine] phrase too long (${wordCount} words) for offline composition — needs AI model`);
+    applyNeedsAiModel();
+    return stubResult;
+  }
+
   // Try local word-composition (100% offline, no network).
   const composed = composeLocalTranslation(phraseToTranslate, targetCode);
   if (!composed) {
-    // Can't compose offline — show original phrase so user sees what they typed,
-    // not an unrelated greeting.
-    console.log(`[gemma-engine] offline composition failed for "${phraseToTranslate}" — showing original`);
-    stubResult.naturalPhrase   = phraseToTranslate;
-    stubResult.audioText       = phraseToTranslate;
-    stubResult.literalMeaning  = phraseToTranslate;
-    stubResult.phonetic        = "";
-    stubResult.context         = `Download the AI model in Settings for full offline translation into ${targetMatch}.`;
-    if (stubResult.chunks) {
-      stubResult.chunks = [{ target: phraseToTranslate, english: phraseToTranslate, phonetic: "", tip: "Download the AI model for a full translation of this phrase." }];
-    }
+    console.log(`[gemma-engine] offline composition failed for "${phraseToTranslate}" — needs AI model`);
+    applyNeedsAiModel();
     return stubResult;
   }
 
   console.log(`[gemma-engine] offline composition: "${phraseToTranslate}" → "${composed.phrase}" (${targetCode})`);
+  // Build proper audio segments so the transcript shows the composed phrase,
+  // not the old curated ¿Cómo estás? / 你好吗 entry.
+  const nativeCodeFallback = messages.find((m) => m.role === "system")?.content
+    .match(/native language (?:is )?([A-Za-z\s]+)/i)?.[1]?.trim() || "en";
+  const introText = `Here's how to say it in ${targetMatch}:`;
   stubResult.naturalPhrase  = composed.phrase;
   stubResult.audioText      = composed.phrase;
   stubResult.literalMeaning = phraseToTranslate;
   stubResult.phonetic       = composed.phonetic;
+  stubResult.localReply     = `In ${targetMatch}, "${phraseToTranslate}" is "${composed.phrase}".`;
   stubResult.context        = `Here's how to say it in ${targetMatch}.`;
-  if (stubResult.chunks) {
-    stubResult.chunks = composed.chunks;
-  }
+  stubResult.audioSegments  = [
+    { lang: nativeCodeFallback, text: introText },
+    { lang: targetCode,         text: composed.phrase },
+  ];
+  stubResult.chunks = composed.chunks;
   return stubResult;
 }
 

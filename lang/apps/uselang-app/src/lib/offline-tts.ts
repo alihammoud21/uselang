@@ -122,13 +122,9 @@ export async function speakOfflineText({
           Speech.stop();
           finish();
         }, estimatedSpeechMs(body, safeRate * PACED_BASELINE));
-        // Non-English voices on iOS can sound unnaturally deep at pitch 1.0.
-        // A small lift to 1.1 makes zh-CN, es, and fr sound more human.
-        const isEnglish = locale.startsWith("en");
         Speech.speak(body, {
           language: locale,
           rate: PACED_BASELINE * safeRate,
-          pitch: isEnglish ? 1.0 : 1.1,
           onDone: finish,
           onStopped: finish,
           onError: finish,

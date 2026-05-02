@@ -459,28 +459,32 @@ export default function QuickSessionScreen() {
 
   // ── Header back ────────────────────────────────────────────────────────
   const handleClose = useCallback(() => {
+    // Shared: stop all audio THEN navigate. Using .finally() chains the
+    // navigation AFTER stop completes so TTS can't keep playing on the
+    // previous screen after the user has already closed.
+    const doClose = () => {
+      stopTutorAudio()
+        .catch(() => {})
+        .finally(() => {
+          if (router.canGoBack()) router.back();
+          else router.replace("/(tabs)");
+        });
+    };
+
     if (aiState === "listening" || aiState === "speaking" || feedback || lastAttemptText) {
+      // Stop mic immediately so it's not listening while the alert is up
+      speechSessionRef.current?.stop();
+      speechSessionRef.current = null;
       Alert.alert(
         "Leave this session?",
         "You'll lose your current XP progress if you leave.",
         [
           { text: "Keep Going", style: "cancel" },
-          {
-            text: "Leave",
-            style: "destructive",
-            onPress: () => {
-              stopTutorAudio().catch(() => {});
-              stopRoutedTts().catch(() => {});
-              if (router.canGoBack()) router.back();
-              else router.replace("/(tabs)");
-            },
-          },
+          { text: "Leave", style: "destructive", onPress: doClose },
         ],
       );
     } else {
-      stopTutorAudio().catch(() => {});
-      if (router.canGoBack()) router.back();
-      else router.replace("/(tabs)");
+      doClose();
     }
   }, [router, aiState, feedback, lastAttemptText]);
 

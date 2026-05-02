@@ -186,9 +186,9 @@ async function fetchDeepgramAudio(text: string, voice: string): Promise<string> 
     return cached;
   }
 
-  // 2s timeout — fall back to native quickly if Deepgram is slow
+  // 3s timeout — quick enough to feel fast, generous enough for typical mobile networks
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 2_000);
+  const timeout = setTimeout(() => controller.abort(), 3_000);
 
   let res: Response;
   try {
