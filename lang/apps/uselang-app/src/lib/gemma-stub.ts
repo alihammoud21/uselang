@@ -1142,6 +1142,22 @@ const VERB_PATTERNS: VerbPattern[] = [
     },
     joiner: { zh: "", es: " ", fr: " ", it: " ", nl: " ", de: " " },
   },
+  // I'd like to order X / I would like to order X / I want to order X / I'd like to have X.
+  // Must be listed BEFORE the generic "I want X" pattern so "to order" is consumed
+  // and only the object (food/item) reaches the noun lookup.
+  {
+    match: /\bi\s*(?:'?d\s+like\s+to\s+(?:order|have)|would\s+like\s+to\s+(?:order|have)|want\s+to\s+(?:order|have|try))\s+(?:the\s+|a\s+|an\s+|some\s+)?(.+)/i,
+    verbs: {
+      zh: { phrase: "我想点", phonetic: "wǒ xiǎng diǎn", sayLike: "woh shyahng dyen" },
+      es: { phrase: "Quisiera pedir", phonetic: "kee-SYEH-rah peh-DEER", sayLike: "kee-SYEH-rah peh-DEER" },
+      fr: { phrase: "Je voudrais commander", phonetic: "zhuh voo-DRAY ko-mahn-DAY", sayLike: "zhuh voo-DRAY ko-mahn-DAY" },
+      de: { phrase: "Ich möchte bestellen", phonetic: "ikh MEUKH-tuh beh-SHTEL-en", sayLike: "ikh MUH-khta beh-SHTEL-en" },
+      it: { phrase: "Vorrei ordinare", phonetic: "vo-RAY or-dee-NAH-reh", sayLike: "voh-RAY or-dee-NAH-reh" },
+      ja: { phrase: "{noun}をお願いします", phonetic: "{noun} o onegaishimasu", sayLike: "{noun} oh oh-neh-gai-shee-mahss" },
+      nl: { phrase: "Ik wil graag bestellen", phonetic: "ik vil khrahkh beh-STEL-en", sayLike: "ik vil khrahkh beh-STEL-en" },
+    },
+    joiner: { zh: "", es: " ", fr: " ", de: " ", it: " ", nl: " " },
+  },
   // I want X / I'd like X / I need X.
   {
     match: /\bi\s*(?:'?d\s+like|want|would\s+like|need)\s+(?:the\s+|a\s+|an\s+|some\s+)?(.+)/i,

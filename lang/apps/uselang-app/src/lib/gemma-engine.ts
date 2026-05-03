@@ -516,8 +516,10 @@ async function stubWithOnlineFallback(messages: ChatMessage[]): Promise<Record<s
 
   // Helper to build honest "needs AI model" override
   const applyNeedsAiModel = () => {
-    const nativeCode2 = messages.find((m) => m.role === "system")?.content
-      .match(/native language (?:is )?([A-Za-z\s]+)/i)?.[1]?.trim() || "en";
+    const nativeCode2 = labelToCode(
+      messages.find((m) => m.role === "system")?.content
+        .match(/user speaks\s+([A-Z][a-zA-Z\s]+?)(?:\s+and|\.|$)/i)?.[1]?.trim() || "English"
+    );
     const tip = `This phrase is too complex for offline mode. Download the AI model in Settings for full ${targetMatch} translation.`;
     stubResult.naturalPhrase  = phraseToTranslate;
     stubResult.audioText      = tip;
@@ -546,8 +548,10 @@ async function stubWithOnlineFallback(messages: ChatMessage[]): Promise<Record<s
   console.log(`[gemma-engine] offline composition: "${phraseToTranslate}" → "${composed.phrase}" (${targetCode})`);
   // Build proper audio segments so the transcript shows the composed phrase,
   // not the old curated ¿Cómo estás? / 你好吗 entry.
-  const nativeCodeFallback = messages.find((m) => m.role === "system")?.content
-    .match(/native language (?:is )?([A-Za-z\s]+)/i)?.[1]?.trim() || "en";
+  const nativeCodeFallback = labelToCode(
+    messages.find((m) => m.role === "system")?.content
+      .match(/user speaks\s+([A-Z][a-zA-Z\s]+?)(?:\s+and|\.|$)/i)?.[1]?.trim() || "English"
+  );
   const introText = `Here's how to say it in ${targetMatch}:`;
   stubResult.naturalPhrase  = composed.phrase;
   stubResult.audioText      = composed.phrase;
@@ -560,6 +564,14 @@ async function stubWithOnlineFallback(messages: ChatMessage[]): Promise<Record<s
     { lang: targetCode,         text: composed.phrase },
   ];
   stubResult.chunks = composed.chunks;
+
+  // Final guard: ensure no stale curated phrase leaks into the target segment.
+  const _segs = stubResult.audioSegments as { lang: string; text: string }[];
+  const _tgt  = _segs.find((s) => s.lang === targetCode);
+  if (_tgt && SAFE_PHRASE_SIGNALS.some((sig) => _tgt.text.includes(sig))) {
+    _tgt.text = composed.phrase;
+  }
+
   return stubResult;
 }
 
@@ -810,15 +822,7 @@ export async function generateTutorJson(
     })();
   }
 
-  // Update audioSegments — replace the target-language segment
-  if (Array.isArray(stubResult.audioSegments)) {
-    for (const seg of stubResult.audioSegments as { lang: string; text: string }[]) {
-      if (seg.lang !== "en") {
-        seg.text = translation;
-        break;
-      }
-    }
-  }
+  // audioSegments were already set correctly at lines 736-739 — no override needed.
   if (!stubResult.context
     || (stubResult.context as string).includes("couldn't translate")
     || (stubResult.context as string).includes("Local stub")

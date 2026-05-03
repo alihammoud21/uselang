@@ -626,6 +626,10 @@ export default function QuickSessionScreen() {
   // Pad the scroll bottom enough that the LAST card never sits behind the
   // transcript card. Add an extra cushion so a long card still breathes.
   const SCROLL_PADDING_BOTTOM = TRANSCRIPT_BOTTOM + TRANSCRIPT_MAX_HEIGHT + 36;
+  // contentInset tells iOS the effective visible area ends above the
+  // transcript+orb overlay, so every card (including WORD BY WORD) can
+  // be scrolled fully clear of the floating bottom layers.
+  const CONTENT_INSET_BOTTOM = TRANSCRIPT_BOTTOM + TRANSCRIPT_MAX_HEIGHT + 20;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: SESSION.bg }} edges={["top", "left", "right"]}>
@@ -672,6 +676,9 @@ export default function QuickSessionScreen() {
           paddingTop: 6,
           paddingBottom: SCROLL_PADDING_BOTTOM,
         }}
+        contentInset={{ bottom: CONTENT_INSET_BOTTOM }}
+        scrollIndicatorInsets={{ bottom: CONTENT_INSET_BOTTOM }}
+        automaticallyAdjustsScrollIndicatorInsets={false}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         bounces={true}
