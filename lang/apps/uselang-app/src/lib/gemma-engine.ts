@@ -38,7 +38,7 @@ import { stubChat, stubGenerateTutorJson, getCuratedPhonetic, stripQuestionWrapp
 import { runWithTimeout, TimeoutError } from "./safe-async";
 
 // ── Timeouts & concurrency ────────────────────────────────────────────────
-const GEMMA_GENERATE_TIMEOUT_MS = 15_000;
+const GEMMA_GENERATE_TIMEOUT_MS = 25_000;
 const MAX_PROMPT_CHARS = 1200; // LiteRT-LM handles larger prompts than ExecuTorch
 const MAX_CONSECUTIVE_FAILURES = 5; // auto-switch to stub after this many failures in a row
 const FAILURE_RESET_MS = 30_000; // reset failure counter after 30s of no failures
@@ -514,14 +514,17 @@ async function stubWithOnlineFallback(messages: ChatMessage[]): Promise<Record<s
   const wordCount = phraseToTranslate.trim().split(/\s+/).length;
   const tooLong = wordCount > 12;
 
-  // Helper to build honest "needs AI model" override
+  // Helper to build honest "needs AI model" override (or "try again" when real model IS loaded)
   const applyNeedsAiModel = () => {
     const nativeCode2 = labelToCode(
       messages.find((m) => m.role === "system")?.content
         .match(/user speaks\s+([A-Z][a-zA-Z\s]+?)(?:\s+and|\.|$)/i)?.[1]?.trim() || "English"
     );
-    const tip = `This phrase is too complex for offline mode. Download the AI model in Settings for full ${targetMatch} translation.`;
-    stubResult.naturalPhrase  = phraseToTranslate;
+    // Fix 1: Don't show "Download AI model" when Gemma IS loaded — it just had a one-off failure
+    const tip = engineState.usingStub
+      ? `This phrase is too complex for offline mode. Download the AI model in Settings for full ${targetMatch} translation.`
+      : `Couldn't translate this phrase. Please try rephrasing or try again.`;
+    stubResult.naturalPhrase  = engineState.usingStub ? phraseToTranslate : "";
     stubResult.audioText      = tip;
     stubResult.literalMeaning = phraseToTranslate;
     stubResult.phonetic       = "";
@@ -531,7 +534,9 @@ async function stubWithOnlineFallback(messages: ChatMessage[]): Promise<Record<s
     stubResult.chunks         = [{ target: phraseToTranslate, english: phraseToTranslate, phonetic: "", tip }];
   };
 
-  if (tooLong) {
+  // Fix 3: Only enforce the 12-word gate in pure stub mode (real model not installed).
+  // When the real model IS loaded but had a one-off failure, we still try composition.
+  if (tooLong && engineState.usingStub) {
     console.log(`[gemma-engine] phrase too long (${wordCount} words) for offline composition — needs AI model`);
     applyNeedsAiModel();
     return stubResult;
@@ -594,14 +599,17 @@ export async function generateTutorJson(
     consecutiveFailures = 0;
   }
 
-  // ── Stub path: model not available or too many consecutive failures ────────
-  if (engineState.usingStub || consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-      console.warn(`[gemma-engine] generateTutorJson: ${consecutiveFailures} consecutive failures — using stub for safety`);
-    } else {
-      console.log("[gemma-engine] generateTutorJson: USING STUB (model not available)");
-    }
+  // ── Stub path: only when the real model is genuinely not available ───────
+  if (engineState.usingStub) {
+    console.log("[gemma-engine] generateTutorJson: USING STUB (model not available)");
     return stubWithOnlineFallback(messages);
+  }
+  // Fix 2: When real model IS loaded, hitting MAX_CONSECUTIVE_FAILURES no longer
+  // permanently locks to stub. Reset the counter and let Gemma retry.
+  if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+    console.warn(`[gemma-engine] generateTutorJson: ${consecutiveFailures} failures — resetting counter (real model loaded, retrying Gemma)`);
+    consecutiveFailures = 0;
+    lastFailureAt = Date.now();
   }
 
   // ── Extract the user's intent from the messages ────────────────────────────
@@ -636,14 +644,16 @@ export async function generateTutorJson(
   // This replaces two separate sequential Gemma calls (~4-8s saved per turn).
   const contextRule = `IMPORTANT: Choose the word/form that matches the EXACT meaning and context. For example, "I love pizza" should use the word for enjoying food, NOT romantic love. "I love my friend" should use a casual/platonic word, not a romantic one. Always match the speaker's intent.`;
   let sysContent: string;
+  // Fix C: add COMPLETE phrase instruction so 1B model never truncates mid-phrase
+  const completeRule = `CRITICAL: Translate the COMPLETE phrase. Do NOT stop early or omit any words. Every word in the input MUST appear in the translation.`;
   if (targetCode === "zh") {
-    sysContent = `Translate to Mandarin Chinese. Reply with EXACTLY two lines:\nLine 1: Chinese characters ONLY (no pinyin, no English)\nLine 2: Pinyin with tone marks\nExample:\n你好\nnǐ hǎo\n${contextRule}`;
+    sysContent = `Translate to Mandarin Chinese. Reply with EXACTLY two lines:\nLine 1: Chinese characters ONLY (no pinyin, no English)\nLine 2: Pinyin with tone marks\nExample:\n你好\nnǐ hǎo\n${contextRule}\n${completeRule}`;
   } else if (targetCode === "es") {
-    sysContent = `Translate to Spanish. Reply with EXACTLY two lines:\nLine 1: The Spanish phrase\nLine 2: English-readable pronunciation (capitalize stressed syllables)\nExample:\nBuenos días\nBWEH-nos DEE-as\n${contextRule}`;
+    sysContent = `Translate to Spanish. Reply with EXACTLY two lines:\nLine 1: The Spanish phrase (ALL words — do NOT stop early)\nLine 2: English-readable pronunciation (capitalize stressed syllables)\nExample for 3 words:\nMe encanta la pizza\nmeh en-KAHN-tah lah PEET-sah\n${contextRule}\n${completeRule}`;
   } else if (targetCode === "fr") {
-    sysContent = `Translate to French. Reply with EXACTLY two lines:\nLine 1: The French phrase\nLine 2: English-readable pronunciation (capitalize stressed syllables)\nExample:\nBonjour\nbohn-ZHOOR\n${contextRule}`;
+    sysContent = `Translate to French. Reply with EXACTLY two lines:\nLine 1: The French phrase (ALL words — do NOT stop early)\nLine 2: English-readable pronunciation (capitalize stressed syllables)\nExample for 3 words:\nJ'adore la pizza\nzha-DOR lah peed-ZAH\n${contextRule}\n${completeRule}`;
   } else {
-    sysContent = `Translate into ${targetLabel}. Reply with EXACTLY two lines:\nLine 1: The ${targetLabel} translation\nLine 2: English-readable pronunciation (capitalize stressed syllables)\n${contextRule}`;
+    sysContent = `Translate into ${targetLabel}. Reply with EXACTLY two lines:\nLine 1: The COMPLETE ${targetLabel} translation (ALL words — do NOT stop early)\nLine 2: English-readable pronunciation (capitalize stressed syllables)\n${contextRule}\n${completeRule}`;
   }
 
   const translatePrompt: ChatMessage[] = [
@@ -693,11 +703,22 @@ export async function generateTutorJson(
       translation = line1.replace(/^[-\d.*•]+\s*/, "").trim();
       if (allLines.length >= 2) {
         const line2 = allLines[1].replace(/^[-\d.*•]+\s*/, "").replace(/^pronunciation\s*[:=]\s*/i, "").trim();
-        // Validate: line2 should look like a pronunciation guide, not a translation
-        const looksLikePhonetic = /[A-Z]{2,}|[-]/.test(line2) || line2.length < translation.length * 2;
+        // Fix A: strict phonetic detection — require actual phonetic markers.
+        // ALL-CAPS stressed syllables (BWH-nos), hyphens (DEE-as), or pinyin
+        // tone marks (nǐ hǎo). The old length-based fallback was too loose and
+        // silently filed "la pizza" as the pronunciation guide for "Me encanta".
+        const looksLikePhonetic =
+          /[A-Z]{2,}/.test(line2) ||
+          /(?<![a-zA-Z])-(?![a-zA-Z])|-[A-Z]|[A-Z]-/.test(line2) ||
+          /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/.test(line2);
         if (line2 && looksLikePhonetic && line2.toLowerCase() !== translation.toLowerCase()) {
           gemmaPhonetic = line2;
           console.log(`[gemma-engine] phonetic from combined prompt: "${gemmaPhonetic}"`);
+        } else if (line2 && !looksLikePhonetic && line2.toLowerCase() !== translation.toLowerCase()) {
+          // line2 looks like continuation of the translation (e.g. "la pizza"),
+          // not a pronunciation guide — append it.
+          translation = `${translation} ${line2}`.trim();
+          console.log(`[gemma-engine] appended non-phonetic line2 to translation: "${translation}"`);
         }
       }
     }
@@ -728,6 +749,29 @@ export async function generateTutorJson(
     if (/^\d/.test(translation) || cjkRatio < 0.35) {
       console.warn(`[gemma-engine] zh/ja/ko garbage detected (cjkRatio=${cjkRatio.toFixed(2)}, starts with digit=${/^\d/.test(translation)}): "${translation}"`);
       isGarbage = true;
+    }
+  }
+
+  // Fix 4: When real model IS loaded, retry once with a simpler prompt before falling to stub
+  if (isGarbage && !engineState.usingStub) {
+    console.warn("[gemma-engine] garbage detected — retrying with minimal prompt");
+    try {
+      const retryOut = await chatWithGemma([
+        { role: "system", content: `Translate to ${targetLabel}. Reply with ONLY the translated phrase, nothing else.` },
+        { role: "user", content: phraseMatch.slice(0, 60) },
+      ], { maxTokens: 50, temperature: 0.05 });
+      const retried = retryOut.trim().replace(/^["""'']+|["""'']+$/g, "");
+      const retryGarbage = !retried
+        || retried.toLowerCase() === phraseMatch.toLowerCase()
+        || /line\s*\d|chinese characters|translat|example/i.test(retried);
+      if (!retryGarbage) {
+        translation = retried;
+        isGarbage = false;
+        consecutiveFailures = 0;
+        console.log(`[gemma-engine] retry succeeded: "${retried}"`);
+      }
+    } catch (retryErr: any) {
+      console.warn("[gemma-engine] retry also failed:", retryErr?.message);
     }
   }
 
@@ -768,7 +812,20 @@ export async function generateTutorJson(
   }
 
   // ── Validate chunks actually match the translation ─────────────────────
-  const validatedChunks = validateAndFixChunks(chunks, translation, targetCode, cappedPhrase);
+  // Fix B: seed with curated stub chunks if available — they may already be
+  // perfect (e.g. [Me, encanta, la, pizza] for "I love pizza"). Only
+  // regenerate when they don't match the real translation.
+  type ChunkItem = { english: string; target: string; phonetic: string; tip: string };
+  const curatedChunks: ChunkItem[] = Array.isArray(stubResult.chunks)
+    ? (stubResult.chunks as unknown[]).map((c: any) => ({
+        english: String(c?.english || ""),
+        target:  String(c?.target  || ""),
+        phonetic: String(c?.phonetic || ""),
+        tip:     String(c?.tip     || ""),
+      }))
+    : [];
+  const seedChunks = curatedChunks.length > 0 ? curatedChunks : chunks;
+  const validatedChunks = validateAndFixChunks(seedChunks, translation, targetCode, cappedPhrase);
   stubResult.chunks = validatedChunks;
 
   // ── Fire-and-forget background breakdown enrichment ──────────────────────
