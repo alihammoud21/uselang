@@ -780,11 +780,18 @@ export async function generateTutorJson(
     }
   }
 
-  // For non-CJK: catch suspiciously short translations for multi-word inputs
+  // For non-CJK: catch suspiciously short translations for multi-word inputs.
+  // Rules (applied in order — first match wins):
+  //   • 3+ input words → translation must have ≥ 2 words (catches "I love people" → "Yo")
+  //   • 4+ input words → translation must have ≥ 2 words (catches any single-word echo)
+  //   • 5+ input words → translation must have ≥ floor(input * 0.5) words (proportional)
   if (!isGarbage && targetCode !== "zh" && targetCode !== "ja" && targetCode !== "ko") {
     const translationWords = translation.trim().split(/\s+/).length;
-    if (phraseWords.length >= 4 && translationWords <= 1) {
-      console.warn(`[gemma-engine] truncation detected: ${phraseWords.length} input words → only ${translationWords} output words ("${translation}") — retrying`);
+    const minExpected =
+      phraseWords.length >= 5 ? Math.floor(phraseWords.length * 0.5) :
+      phraseWords.length >= 3 ? 2 : 1;
+    if (translationWords < minExpected) {
+      console.warn(`[gemma-engine] truncation detected: ${phraseWords.length} input words → only ${translationWords} output words (min expected ${minExpected}): "${translation}" — retrying`);
       isGarbage = true;
     }
   }
