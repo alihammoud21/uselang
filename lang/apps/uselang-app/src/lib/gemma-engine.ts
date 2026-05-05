@@ -154,8 +154,24 @@ export async function loadGemmaModel(): Promise<boolean> {
     return true;
   }
 
+  if (engineState.loaded && engineState.usingStub && HAS_NATIVE) {
+    // Native module IS available but we're on stub — try loading the cached model
+    // (e.g. after app rebuild, the JS state resets but the model file persists on disk).
+    console.log("[gemma] Stub active but native module available — attempting auto-load of cached model…");
+    setState({ loaded: false, loading: true });
+    const ok = await tryLoadLiteRT(1);
+    if (ok) {
+      console.log("[gemma] ✅ Auto-loaded cached model successfully");
+      return true;
+    }
+    // Model not cached — stay on stub, don't block the caller
+    console.log("[gemma] Cached model not available — staying on stub. Use downloadAndLoadModel() to download.");
+    activateStub("On-device AI ready. Download model for full quality.");
+    return true;
+  }
+
   if (engineState.loaded && engineState.usingStub) {
-    console.log("[gemma] MODEL ALREADY LOADED (stub). Use downloadAndLoadModel() to upgrade.");
+    console.log("[gemma] MODEL ALREADY LOADED (stub, no native). Use a dev build for GPU inference.");
     return true;
   }
 
@@ -198,7 +214,7 @@ export async function downloadAndLoadModel(): Promise<boolean> {
   }
 
   if (!llm) {
-    console.error("[gemma] Cannot download: LiteRT-LM native module not linked.");
+    console.warn("[gemma] Cannot download: LiteRT-LM native module not linked.");
     setState({
       error: "Cannot download model: native inference module not linked. Rebuild the app.",
       availability: "needs-native-build",
@@ -232,7 +248,7 @@ export async function downloadAndLoadModel(): Promise<boolean> {
 
   // ── Both attempts failed → stub ────────────────────────────────────
   const failReason = engineState.error || "Unknown error during model load";
-  console.error(`[gemma] MODEL LOAD FAILED after 2 attempts: ${failReason}`);
+  console.warn(`[gemma] MODEL LOAD FAILED after 2 attempts: ${failReason}`);
   activateStub("Download failed. Tap to retry.");
   setState({ availability: "download-failed" });
   return true;
@@ -263,7 +279,7 @@ async function tryLoadLiteRT(attempt: number): Promise<boolean> {
     return true;
   } catch (e: any) {
     const msg = e?.message || "Unknown error";
-    console.error(`[gemma] MODEL LOAD FAILED (attempt ${attempt}): ${msg}`);
+    console.warn(`[gemma] MODEL LOAD FAILED (attempt ${attempt}): ${msg}`);
     setState({
       error: msg,
       loading: attempt >= 2 ? false : true,
@@ -333,7 +349,7 @@ export async function chatWithGemma(
 
   // ── Real model path (LiteRT-LM) ───────────────────────────────────
   if (!llm) {
-    console.error("[gemma-engine] LiteRT-LM instance missing after load.");
+    console.warn("[gemma-engine] LiteRT-LM instance missing after load.");
     activateStub("Native module missing unexpectedly.");
     throw new Error("LiteRT-LM unavailable after load.");
   }
@@ -393,9 +409,9 @@ export async function chatWithGemma(
     return output;
   } catch (e: any) {
     if (e instanceof TimeoutError) {
-      console.error(`[gemma-engine] GEMMA TIMEOUT after ${GEMMA_GENERATE_TIMEOUT_MS}ms`);
+      console.warn(`[gemma-engine] GEMMA TIMEOUT after ${GEMMA_GENERATE_TIMEOUT_MS}ms`);
     } else {
-      console.error("[gemma-engine] GEMMA FAILED:", e?.message);
+      console.warn("[gemma-engine] GEMMA FAILED:", e?.message);
     }
     throw e;
   } finally {
