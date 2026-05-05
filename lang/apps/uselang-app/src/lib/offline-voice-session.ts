@@ -169,16 +169,28 @@ async function buildReadiness(targetLang: string, nativeLang: string, mode?: Off
   // Live Lang (translate mode) REQUIRES the real Gemma model — stubs produce
   // garbage translations. Block here so the user sees a clear "Download Model"
   // screen instead of nonsense output.
+  //
+  // Exceptions to blocking:
+  //   1. Model is currently loading (auto-load from cache) — show a soft wait
+  //      state instead of "Download" since it will resolve on its own.
+  //   2. Model is already loaded and NOT on stub — fully ready.
   if (!blockingMessage && mode === "translate") {
-    if (gemma.usingStub || !gemma.loaded) {
-      if (!isGemmaSupported()) {
-        blockingMessage = "Live translation requires a dev build with the AI engine. Rebuild with `expo run:ios`.";
-        blockingAction = "rebuild";
-      } else {
-        blockingMessage = "Live Lang needs the AI model for real-time translation. Download it to get started (~2.5 GB, one-time).";
-        blockingAction = "load-model";
-      }
+    if (!isGemmaSupported()) {
+      // Native module not linked — cannot run Gemma at all.
+      blockingMessage = "Live translation requires a dev build with the AI engine. Rebuild with `expo run:ios`.";
+      blockingAction = "rebuild";
+    } else if (gemma.loading) {
+      // Model is currently loading from cache — don't block, just let the
+      // subscribeGemmaState watcher in OfflineVoicePanel clear it when done.
+      // Return ready:false with a soft "loading" action so the panel shows a spinner.
+      blockingMessage = "Loading AI model…";
+      blockingAction = "load-model";
+    } else if (gemma.usingStub || !gemma.loaded) {
+      // Model not loading and not ready — user needs to download.
+      blockingMessage = "Live Lang needs the AI model for real-time translation. Download it to get started (~2.5 GB, one-time).";
+      blockingAction = "load-model";
     }
+    // else: gemma.loaded && !gemma.usingStub → model ready, no block
   }
 
   return {

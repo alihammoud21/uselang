@@ -453,7 +453,13 @@ export async function startNativeSpeechSession(options: NativeSpeechOptions): Pr
 
   await ensureNativeSpeechPermission(requiresOnDevice);
 
-  if (!isNativeSpeechAvailable()) {
+  // On iOS, the custom OfflineVoiceModule bridge drives speech recognition —
+  // it takes priority over expo-speech-recognition's isRecognitionAvailable()
+  // which is known to return false negatives on physical devices even when
+  // SFSpeechRecognizer is fully functional. If the native bridge is present,
+  // we trust it over the expo module check.
+  const nativeBridgeAvailable = Platform.OS === "ios" && !!getOfflineVoiceModule();
+  if (!nativeBridgeAvailable && !isNativeSpeechAvailable()) {
     throw new Error("Speech recognition is not available on this device.");
   }
 

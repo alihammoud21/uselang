@@ -34,7 +34,7 @@ import Animated, {
   withSequence,
 } from "react-native-reanimated";
 import { COLORS } from "@/lib/constants";
-import { downloadAndLoadModel, subscribeGemmaState } from "@/lib/gemma-engine";
+import { downloadAndLoadModel, loadGemmaModel, subscribeGemmaState, getGemmaState, isGemmaSupported } from "@/lib/gemma-engine";
 import { validateUserText } from "@/lib/input-validate";
 import { ensureNativeSpeechPermission } from "@/lib/native-speech";
 import {
@@ -160,6 +160,20 @@ export default function OfflineVoicePanel({
       ctrl.checkReadiness().then(setReadiness).catch(() => {});
     });
   }, []);
+
+  // ── Auto-kick model load when Live Lang opens in translate mode ──────────
+  // If Gemma is on stub but native module IS available, kick loadGemmaModel()
+  // immediately so it auto-loads from cache. The subscribeGemmaState above
+  // will re-check readiness and clear the blocking screen once it finishes.
+  useEffect(() => {
+    if (mode !== "translate") return;
+    const s = getGemmaState();
+    if (isGemmaSupported() && (s.usingStub || !s.loaded) && !s.loading) {
+      console.log("[OfflineVoicePanel] translate mode: auto-loading Gemma from cache…");
+      loadGemmaModel().catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   const onPrimaryTap = useCallback(async () => {
     if (orbBusyRef.current) return;
@@ -801,12 +815,22 @@ function BlockingScreen({
 
         <View style={{ marginTop: 28, gap: 10 }}>
           {action === "load-model" ? (
-            <PrimaryButton
-              label={loadingModel ? "Loading model…" : "Load offline model"}
-              icon="download-outline"
-              onPress={onLoadModel}
-              disabled={loadingModel}
-            />
+            loadingModel || message === "Loading AI model…" ? (
+              // Auto-loading from cache — show a spinner, no button needed
+              <View style={{ alignItems: "center", paddingVertical: 8 }}>
+                <ActivityIndicator size="large" color={COLORS.gold} />
+                <Text style={{ marginTop: 10, fontSize: 13, color: COLORS.textSub, textAlign: "center" }}>
+                  {message === "Loading AI model…" ? "Loading AI model from cache…" : "Loading model…"}
+                </Text>
+              </View>
+            ) : (
+              <PrimaryButton
+                label="Load offline model"
+                icon="download-outline"
+                onPress={onLoadModel}
+                disabled={false}
+              />
+            )
           ) : null}
           {action === "permission" ? (
             <PrimaryButton
@@ -815,7 +839,9 @@ function BlockingScreen({
               onPress={onRequestPermission}
             />
           ) : null}
-          <SecondaryButton label="Re-check" icon="refresh-outline" onPress={onRecheck} />
+          {action !== "load-model" || message !== "Loading AI model…" ? (
+            <SecondaryButton label="Re-check" icon="refresh-outline" onPress={onRecheck} />
+          ) : null}
         </View>
       </View>
     </View>

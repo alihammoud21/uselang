@@ -663,7 +663,11 @@ export async function generateTutorJson(
   // Fix C: add COMPLETE phrase instruction so 1B model never truncates mid-phrase
   const completeRule = `CRITICAL: Translate the COMPLETE phrase. Do NOT stop early or omit any words. Every word in the input MUST appear in the translation.`;
   if (targetCode === "zh") {
-    sysContent = `Translate to Mandarin Chinese. Reply with EXACTLY two lines:\nLine 1: Chinese characters ONLY (no pinyin, no English)\nLine 2: Pinyin with tone marks\nExample:\n你好\nnǐ hǎo\n${contextRule}\n${completeRule}`;
+    // Multi-word example teaches the 2B model to translate full phrases, not just keywords
+    const zhExample = isLongPhrase
+      ? `Example for "the pizza looks good":\n披萨看起来很好吃\npīsà kàn qǐlái hěn hǎo chī`
+      : `Example for "hello":\n你好\nnǐ hǎo`;
+    sysContent = `Translate to Mandarin Chinese. Reply with EXACTLY two lines:\nLine 1: Chinese characters ONLY (no pinyin, no English)\nLine 2: Pinyin with tone marks\n${zhExample}\n${contextRule}\n${completeRule}`;
   } else if (targetCode === "es") {
     sysContent = `Translate to Spanish. Reply with EXACTLY two lines:\nLine 1: The Spanish phrase (ALL words — do NOT stop early)\nLine 2: English-readable pronunciation (capitalize stressed syllables)\nExample for 3 words:\nMe encanta la pizza\nmeh en-KAHN-tah lah PEET-sah\n${contextRule}\n${completeRule}`;
   } else if (targetCode === "fr") {
@@ -768,20 +772,51 @@ export async function generateTutorJson(
       console.warn(`[gemma-engine] zh/ja/ko garbage detected (cjkRatio=${cjkRatio.toFixed(2)}, starts with digit=${/^\d/.test(translation)}): "${translation}"`);
       isGarbage = true;
     }
+    // Truncation detection: if input has 3+ words but output is ≤2 CJK chars,
+    // the model likely dropped most of the phrase (e.g. "the pizza looks good" → "看好")
+    if (!isGarbage && phraseWords.length >= 3 && cjkChars <= 2) {
+      console.warn(`[gemma-engine] zh truncation detected: ${phraseWords.length} input words → only ${cjkChars} CJK chars ("${translation}") — retrying`);
+      isGarbage = true;
+    }
+  }
+
+  // For non-CJK: catch suspiciously short translations for multi-word inputs
+  if (!isGarbage && targetCode !== "zh" && targetCode !== "ja" && targetCode !== "ko") {
+    const translationWords = translation.trim().split(/\s+/).length;
+    if (phraseWords.length >= 4 && translationWords <= 1) {
+      console.warn(`[gemma-engine] truncation detected: ${phraseWords.length} input words → only ${translationWords} output words ("${translation}") — retrying`);
+      isGarbage = true;
+    }
   }
 
   // Fix 4: When real model IS loaded, retry once with a simpler prompt before falling to stub
   if (isGarbage && !engineState.usingStub) {
-    console.warn("[gemma-engine] garbage detected — retrying with minimal prompt");
+    console.warn("[gemma-engine] garbage detected — retrying with explicit prompt");
     try {
+      // More explicit retry prompt: include word count and example to prevent truncation
+      const wordCount = phraseMatch.trim().split(/\s+/).length;
+      const retrySystem = targetCode === "zh"
+        ? `You are a Chinese translator. Translate the ENTIRE ${wordCount}-word English phrase to Mandarin Chinese. Include ALL nouns, verbs, and adjectives. Reply with ONLY the Chinese characters, nothing else. Example: "the pizza looks good" → "披萨看起来很好吃"`
+        : `Translate the ENTIRE ${wordCount}-word phrase to ${targetLabel}. Include every word. Reply with ONLY the translated phrase, nothing else.`;
       const retryOut = await chatWithGemma([
-        { role: "system", content: `Translate to ${targetLabel}. Reply with ONLY the translated phrase, nothing else.` },
+        { role: "system", content: retrySystem },
         { role: "user", content: phraseMatch.slice(0, 60) },
-      ], { maxTokens: 50, temperature: 0.05 });
-      const retried = retryOut.trim().replace(/^["""'']+|["""'']+$/g, "");
-      const retryGarbage = !retried
+      ], { maxTokens: 80, temperature: 0.05 });
+      const retried = retryOut.trim()
+        .replace(/<\/?(?:start_of_turn|end_of_turn)>/g, "")
+        .replace(/^["""'']+|["""'']+$/g, "")
+        .trim();
+      let retryGarbage = !retried
         || retried.toLowerCase() === phraseMatch.toLowerCase()
         || /line\s*\d|chinese characters|translat|example/i.test(retried);
+      // Also check retry for truncation (zh: must have >2 CJK chars for 3+ word input)
+      if (!retryGarbage && targetCode === "zh" && wordCount >= 3) {
+        const retryCjk = (retried.match(/[一-鿿]/g) || []).length;
+        if (retryCjk <= 2) {
+          console.warn(`[gemma-engine] retry also truncated: ${retryCjk} CJK chars for ${wordCount}-word input`);
+          retryGarbage = true;
+        }
+      }
       if (!retryGarbage) {
         translation = retried;
         isGarbage = false;
@@ -793,9 +828,43 @@ export async function generateTutorJson(
     }
   }
 
-  if (isGarbage) {
-    console.warn("[gemma-engine] generateTutorJson: empty/echoed/garbage translation — falling back to stub+composition");
+  // When Gemma IS loaded, NEVER fall back to stub — try one last time with the
+  // simplest possible prompt, and if that still fails, use whatever we have.
+  if (isGarbage && !engineState.usingStub) {
+    console.warn("[gemma-engine] all retries exhausted — final attempt with bare prompt");
+    try {
+      const bareOut = await chatWithGemma([
+        { role: "user", content: `${phraseMatch} = ${targetLabel}:` },
+      ], { maxTokens: 60, temperature: 0.0 });
+      const bareResult = bareOut.trim()
+        .replace(/<\/?(?:start_of_turn|end_of_turn)>/g, "")
+        .replace(/^["""'']+|["""'']+$/g, "")
+        .split("\n")[0]?.trim();
+      if (bareResult && bareResult.toLowerCase() !== phraseMatch.toLowerCase()) {
+        translation = bareResult;
+        isGarbage = false;
+        console.log(`[gemma-engine] bare prompt succeeded: "${bareResult}"`);
+      }
+    } catch (bareErr: any) {
+      console.warn("[gemma-engine] bare prompt failed:", bareErr?.message);
+    }
+  }
+
+  if (isGarbage && engineState.usingStub) {
+    // Only fall to stub when the real model is genuinely not installed
+    console.warn("[gemma-engine] generateTutorJson: stub mode — using offline composition");
     return stubWithOnlineFallback(messages);
+  }
+
+  if (isGarbage) {
+    // Gemma IS loaded but all 3 attempts failed — show a clean error, never stub composition
+    console.warn("[gemma-engine] generateTutorJson: all Gemma attempts failed — returning error");
+    const stubResult = stubGenerateTutorJson(messages);
+    stubResult.naturalPhrase = "";
+    stubResult.audioText = "Couldn't translate this phrase. Please try rephrasing or try again.";
+    stubResult.context = stubResult.audioText as string;
+    stubResult.localReply = stubResult.audioText as string;
+    return stubResult;
   }
 
   // ── Merge real translation with stub formatting ────────────────────────────

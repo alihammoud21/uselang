@@ -2248,6 +2248,11 @@ const EN_WORDS: Record<string, WordEntry> = {
   warm:      { zh:"暖",   zhPin:"nuǎn",    es:"cálido",     fr:"chaud" },
   cool:      { zh:"凉",   zhPin:"liáng",   es:"fresco",     fr:"frais" },
   rainy:     { zh:"雨",   zhPin:"yǔ",      es:"lluvioso",   fr:"pluvieux" },
+  // Common nouns — food
+  pizza:     { zh:"披萨", zhPin:"pīsà",    es:"pizza",      fr:"pizza" },
+  coffee:    { zh:"咖啡", zhPin:"kāfēi",   es:"café",       fr:"café" },
+  rice:      { zh:"米饭", zhPin:"mǐfàn",   es:"arroz",      fr:"riz" },
+  chicken:   { zh:"鸡肉", zhPin:"jīròu",   es:"pollo",      fr:"poulet" },
   // Common nouns — nature/weather
   weather:   { zh:"天气", zhPin:"tiānqì",  es:"tiempo",     fr:"temps" },
   sky:       { zh:"天空", zhPin:"tiānkōng",es:"cielo",      fr:"ciel" },
