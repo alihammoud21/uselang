@@ -3,28 +3,17 @@ import { View, Text, ScrollView, Dimensions, Pressable, Modal, StyleSheet } from
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS, SUPPORTED_LANGUAGES } from "@/lib/constants";
-import { LANGUAGE_REACH, NativeGlobe } from "@/components/NativeGlobe";
+import { LANGUAGE_REACH } from "@/components/NativeGlobe";
+import { AppleMapGlobe } from "@/components/AppleMapGlobe";
 import { getUserProfile } from "@/lib/user-store";
 import { ACCENT_REGIONS, type AccentRegion, type LanguageAccents } from "@/lib/accent-regions";
 import { getLocationsForLanguage, LOCATION_ICONS } from "@/data/map-locations";
 import { getLanguageProgress, subscribeLessonProgress } from "@/lib/lesson-store";
 import type { MapLocation, MapLocationTier, LanguageProgress } from "@/lib/lesson-types";
 
-const { width: SW, height: SH } = Dimensions.get("window");
+const { height: SH } = Dimensions.get("window");
 const GLOBE_H = Math.min(SH * 0.52, 420);
 const SPACE_BG = "#050816";
-const STARS = [
-  { left: "12%", top: "18%", size: 1.4, opacity: 0.6 },
-  { left: "24%", top: "78%", size: 1.1, opacity: 0.45 },
-  { left: "38%", top: "10%", size: 1.2, opacity: 0.55 },
-  { left: "52%", top: "20%", size: 1.6, opacity: 0.75 },
-  { left: "70%", top: "14%", size: 1, opacity: 0.5 },
-  { left: "84%", top: "30%", size: 1.3, opacity: 0.65 },
-  { left: "16%", top: "46%", size: 1, opacity: 0.48 },
-  { left: "78%", top: "66%", size: 1.5, opacity: 0.7 },
-  { left: "62%", top: "84%", size: 1.1, opacity: 0.5 },
-  { left: "33%", top: "62%", size: 1.3, opacity: 0.62 },
-];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -75,8 +64,6 @@ export default function GlobeScreen() {
     return max;
   }, [knownLanguages]);
 
-  const globeSize = Math.min(SW * 0.96, 380);
-
   const [openAccents, setOpenAccents] = useState<LanguageAccents | null>(null);
 
   const totalSpeakersM = useMemo(() => {
@@ -90,39 +77,21 @@ export default function GlobeScreen() {
         style={{ backgroundColor: COLORS.bg }}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── Globe — starry sky, real earth texture, tappable ───────── */}
+        {/* ── Globe — Apple Maps satellite globe ──────────────────────── */}
         <View
           style={{
             height: GLOBE_H,
-            alignItems: "center",
-            justifyContent: "center",
             backgroundColor: SPACE_BG,
             overflow: "hidden",
           }}
         >
-          {STARS.map((star, index) => (
-            <View
-              key={index}
-              style={{
-                position: "absolute",
-                left: star.left,
-                top: star.top,
-                width: star.size,
-                height: star.size,
-                borderRadius: star.size / 2,
-                backgroundColor: "#FFFFFF",
-                opacity: star.opacity,
-              } as any}
-            />
-          ))}
-          <NativeGlobe
-            size={globeSize}
+          {/* Apple Maps fills the entire header — real satellite Earth */}
+          <AppleMapGlobe
+            height={GLOBE_H}
             highlightLanguages={knownLanguages}
-            autoRotate
-            showStats={false}
           />
 
-          {/* Section label top-left */}
+          {/* Section label top-left — floats above the map */}
           <Text
             style={{
               position: "absolute",
@@ -130,13 +99,17 @@ export default function GlobeScreen() {
               left: 22,
               fontSize: 11,
               fontWeight: "800",
-              color: "rgba(180,210,255,0.7)",
+              color: "rgba(255,255,255,0.85)",
               letterSpacing: 1.2,
+              textShadowColor: "rgba(0,0,0,0.6)",
+              textShadowOffset: { width: 0, height: 1 },
+              textShadowRadius: 4,
             }}
           >
             YOUR WORLD
           </Text>
 
+          {/* Hint badge — updated for map gestures */}
           <View
             style={{
               position: "absolute",
@@ -148,21 +121,21 @@ export default function GlobeScreen() {
               paddingHorizontal: 12,
               paddingVertical: 6,
               borderRadius: 16,
-              backgroundColor: "rgba(255,255,255,0.06)",
+              backgroundColor: "rgba(0,0,0,0.45)",
               borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.12)",
+              borderColor: "rgba(255,255,255,0.18)",
             }}
           >
-            <Ionicons name="globe-outline" size={12} color="rgba(180,210,255,0.85)" />
+            <Ionicons name="globe-outline" size={12} color="rgba(180,210,255,0.9)" />
             <Text
               style={{
                 fontSize: 11,
-                color: "rgba(210,225,255,0.8)",
+                color: "rgba(210,225,255,0.9)",
                 fontWeight: "600",
                 letterSpacing: 0.3,
               }}
             >
-              Drag to spin the globe
+              Pinch & drag to explore
             </Text>
           </View>
         </View>

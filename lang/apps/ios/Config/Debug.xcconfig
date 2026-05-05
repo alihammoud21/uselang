@@ -1,5 +1,5 @@
 // iOS Simulator reaches your Mac's Vite server at localhost.
 // For a physical iPhone, replace the host with your Mac's LAN IP and add that host to Firebase Authorized Domains if you use Google sign-in there.
 USELANG_WEB_SCHEME = http
-USELANG_WEB_HOST = 192.168.2.109:8081
+USELANG_WEB_HOST = Alis-MacBook-Air.local:8081
 USELANG_WEB_PATH = /

@@ -37,6 +37,12 @@
       "expo-router",
       "react-native-litert-lm",
       [
+        "react-native-maps",
+        {
+          "enableGoogleMaps": false
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "UseLang needs camera access to translate text from photos."

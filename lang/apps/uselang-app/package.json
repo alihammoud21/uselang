@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "scripts": {
-    "postinstall": "node scripts/patch-worklets.js && node scripts/verify-bundled-gemma.js",
+    "postinstall": "node scripts/patch-worklets.js && node scripts/patch-maps.js && node scripts/verify-bundled-gemma.js",
     "verify-gemma": "node scripts/verify-bundled-gemma.js",
     "verify-gemma:strict": "node scripts/verify-bundled-gemma.js --strict",
     "prestart": "node scripts/verify-bundled-gemma.js",
@@ -41,6 +41,7 @@
     "react-native": "0.79.6",
     "react-native-gesture-handler": "~2.24.0",
     "react-native-litert-lm": "^0.3.6",
+    "react-native-maps": "^1.27.2",
     "react-native-nitro-modules": "^0.35.6",
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
