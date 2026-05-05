@@ -11,9 +11,15 @@ private enum OfflinePalette {
     static let gold = Color(red: 0.78, green: 0.58, blue: 0.27)
 }
 
+private struct SelectedLessonContext: Identifiable, Hashable {
+    let lesson: OfflineLesson
+    let languageCode: String
+    var id: String { lesson.id }
+}
+
 struct OfflineLessonEntryView: View {
     private let catalog = OfflineLessonRepository.shared.loadCatalog()
-    @State private var selectedLesson: OfflineLesson?
+    @State private var selectedContext: SelectedLessonContext?
     @State private var homework = OfflineHomeworkStore.shared.pendingHomework()
 
     var body: some View {
@@ -26,12 +32,12 @@ struct OfflineLessonEntryView: View {
                             Text("AI is unavailable right now")
                                 .font(.system(size: 34, weight: .black, design: .rounded))
                                 .foregroundStyle(OfflinePalette.ink)
-                            Text("You’re offline. Practice your lessons and keep your streak going.")
+                            Text("You're offline. Practice your lessons and keep your streak going.")
                                 .font(.system(size: 17, weight: .medium, design: .rounded))
                                 .foregroundStyle(OfflinePalette.sub)
                                 .lineSpacing(3)
                             Button {
-                                selectedLesson = defaultLesson
+                                selectedContext = defaultContext
                             } label: {
                                 Text("Start Practice")
                                     .font(.system(size: 17, weight: .black, design: .rounded))
@@ -53,7 +59,7 @@ struct OfflineLessonEntryView: View {
                             PracticeSection(title: "Your Practice", subtitle: "Continue assigned homework below.") {
                                 ForEach(homework) { item in
                                     HomeworkCard(homework: item) {
-                                        selectedLesson = lessonForHomework(item) ?? defaultLesson
+                                        selectedContext = contextForHomework(item) ?? defaultContext
                                     }
                                 }
                             }
@@ -64,7 +70,7 @@ struct OfflineLessonEntryView: View {
                                 ForEach(course.units) { unit in
                                     ForEach(unit.lessons) { lesson in
                                         LessonCard(course: course, unit: unit, lesson: lesson) {
-                                            selectedLesson = lesson
+                                            selectedContext = SelectedLessonContext(lesson: lesson, languageCode: course.languageCode)
                                         }
                                     }
                                 }
@@ -74,8 +80,8 @@ struct OfflineLessonEntryView: View {
                     .padding(20)
                 }
             }
-            .navigationDestination(item: $selectedLesson) { lesson in
-                OfflineLessonScreen(lesson: lesson)
+            .navigationDestination(item: $selectedContext) { ctx in
+                OfflineLessonScreen(lesson: ctx.lesson, languageCode: ctx.languageCode)
             }
         }
         .onAppear {
@@ -83,15 +89,22 @@ struct OfflineLessonEntryView: View {
         }
     }
 
-    private var defaultLesson: OfflineLesson {
-        catalog.courses.first?.units.first?.lessons.first ?? OfflineLessonRepository.shared.loadCatalog().courses[0].units[0].lessons[0]
+    private var defaultContext: SelectedLessonContext {
+        let course = catalog.courses.first ?? catalog.courses[0]
+        let lesson = course.units.first?.lessons.first ?? course.units[0].lessons[0]
+        return SelectedLessonContext(lesson: lesson, languageCode: course.languageCode)
     }
 
-    private func lessonForHomework(_ homework: OfflineHomeworkAssignment) -> OfflineLesson? {
-        catalog.courses
-            .flatMap(\.units)
-            .flatMap(\.lessons)
-            .first { $0.title.localizedCaseInsensitiveContains(homework.lessonTitle) || homework.lessonTitle.localizedCaseInsensitiveContains($0.title) }
+    private func contextForHomework(_ homework: OfflineHomeworkAssignment) -> SelectedLessonContext? {
+        for course in catalog.courses {
+            if let lesson = course.units.flatMap(\.lessons).first(where: {
+                $0.title.localizedCaseInsensitiveContains(homework.lessonTitle) ||
+                homework.lessonTitle.localizedCaseInsensitiveContains($0.title)
+            }) {
+                return SelectedLessonContext(lesson: lesson, languageCode: course.languageCode)
+            }
+        }
+        return nil
     }
 }
 
@@ -186,9 +199,11 @@ struct OfflineLessonScreen: View {
     @State private var builderTokens: [String] = []
     @State private var selectedTokens: [String] = []
     @State private var isShaking = false
+    let languageCode: String
 
-    init(lesson: OfflineLesson) {
+    init(lesson: OfflineLesson, languageCode: String = "zh-CN") {
         _engine = StateObject(wrappedValue: OfflineLessonEngine(lesson: lesson))
+        self.languageCode = languageCode
     }
 
     var body: some View {
@@ -288,14 +303,22 @@ struct OfflineLessonScreen: View {
                 case .typeAnswer:
                     TypeExercise(text: $typedAnswer)
                 case .listening:
-                    ListeningExercise(options: engine.currentExercise.options ?? [], selected: $selectedAnswer) {
-                        speech.speakMandarin(engine.currentExercise.speakText ?? engine.currentExercise.correctAnswers.first ?? "")
+                    ListeningExercise(
+                        options: engine.currentExercise.options ?? [],
+                        selected: $selectedAnswer,
+                        languageCode: languageCode
+                    ) {
+                        speech.speak(engine.currentExercise.speakText ?? engine.currentExercise.correctAnswers.first ?? "", language: languageCode)
                     }
                 case .speak:
-                    SpeakExercise(transcript: $typedAnswer, expected: engine.currentExercise.speakText ?? engine.currentExercise.correctAnswers.first ?? "") {
-                        speech.speakMandarin(engine.currentExercise.speakText ?? "")
+                    SpeakExercise(
+                        transcript: $typedAnswer,
+                        expected: engine.currentExercise.speakText ?? engine.currentExercise.correctAnswers.first ?? "",
+                        languageCode: languageCode
+                    ) {
+                        speech.speak(engine.currentExercise.speakText ?? "", language: languageCode)
                     } record: {
-                        typedAnswer = await speech.recognizeMandarinOnce()
+                        typedAnswer = await speech.recognizeOnce(language: languageCode)
                     }
                 case .sentenceBuilder:
                     SentenceBuilderExercise(
@@ -427,14 +450,24 @@ private struct TypeExercise: View {
 private struct ListeningExercise: View {
     let options: [String]
     @Binding var selected: String
+    var languageCode: String = "zh-CN"
     let play: () -> Void
+
+    private var playLabel: String {
+        switch languageCode.prefix(2) {
+        case "zh": return "Play Mandarin"
+        case "es": return "Play Spanish"
+        case "fr": return "Play French"
+        default:   return "Play Audio"
+        }
+    }
 
     var body: some View {
         VStack(spacing: 18) {
             Button(action: play) {
                 HStack(spacing: 10) {
                     Image(systemName: "speaker.wave.2.fill")
-                    Text("Play Mandarin")
+                    Text(playLabel)
                 }
                 .font(.system(size: 18, weight: .black, design: .rounded))
                 .foregroundStyle(.white)
@@ -452,13 +485,23 @@ private struct ListeningExercise: View {
 private struct SpeakExercise: View {
     @Binding var transcript: String
     let expected: String
+    var languageCode: String = "zh-CN"
     let play: () -> Void
     let record: () async -> Void
+
+    private var hearLabel: String {
+        switch languageCode.prefix(2) {
+        case "zh": return "Hear Mandarin first"
+        case "es": return "Hear Spanish first"
+        case "fr": return "Hear French first"
+        default:   return "Hear it first"
+        }
+    }
 
     var body: some View {
         VStack(spacing: 16) {
             Button(action: play) {
-                Text("Hear it first")
+                Text(hearLabel)
                     .font(.system(size: 16, weight: .black, design: .rounded))
                     .foregroundStyle(OfflinePalette.blue)
                     .frame(maxWidth: .infinity)

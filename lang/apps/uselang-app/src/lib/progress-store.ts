@@ -175,7 +175,27 @@ async function bumpStreak(): Promise<void> {
 
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  const nextStreak = last === dayKey(yesterday) ? currentStreak + 1 : 1;
+  const isConsecutive = last === dayKey(yesterday);
+
+  let nextStreak: number;
+  if (isConsecutive) {
+    // Normal: continuing a streak
+    nextStreak = currentStreak + 1;
+  } else if (last !== null && currentStreak > 0) {
+    // Missed at least one day — try to consume streak freeze
+    let frozen = false;
+    try {
+      const { hasStreakFreeze, consumeStreakFreeze } = await import("./shop-store");
+      if (await hasStreakFreeze()) {
+        await consumeStreakFreeze();
+        frozen = true;
+        console.log("[progress] Streak freeze consumed — streak preserved at", currentStreak);
+      }
+    } catch { /* non-fatal */ }
+    nextStreak = frozen ? currentStreak + 1 : 1;
+  } else {
+    nextStreak = 1;
+  }
 
   await AsyncStorage.multiSet([
     [KEYS.streak, String(nextStreak)],

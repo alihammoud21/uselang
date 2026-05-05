@@ -34,7 +34,7 @@ import Animated, {
   withSequence,
 } from "react-native-reanimated";
 import { COLORS } from "@/lib/constants";
-import { loadGemmaModel, subscribeGemmaState } from "@/lib/gemma-engine";
+import { downloadAndLoadModel, subscribeGemmaState } from "@/lib/gemma-engine";
 import { validateUserText } from "@/lib/input-validate";
 import { ensureNativeSpeechPermission } from "@/lib/native-speech";
 import {
@@ -182,7 +182,9 @@ export default function OfflineVoicePanel({
   const handleLoadModel = useCallback(async () => {
     setLoadingModel(true);
     try {
-      await loadGemmaModel();
+      // Use downloadAndLoadModel so the real model is fetched — loadGemmaModel
+      // would just activate the stub which isn't enough for Live Lang translate.
+      await downloadAndLoadModel();
       const r = await controllerRef.current?.checkReadiness();
       if (r) setReadiness(r);
     } finally {

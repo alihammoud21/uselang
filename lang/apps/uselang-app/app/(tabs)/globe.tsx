@@ -3,11 +3,9 @@ import { View, Text, ScrollView, Dimensions, Pressable, Modal, StyleSheet } from
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS, SUPPORTED_LANGUAGES } from "@/lib/constants";
-import { LANGUAGE_REACH } from "@/components/NativeGlobe";
-import { EarthGlobe, type EarthMarker } from "@/components/EarthGlobe";
+import { LANGUAGE_REACH, NativeGlobe } from "@/components/NativeGlobe";
 import { getUserProfile } from "@/lib/user-store";
 import { ACCENT_REGIONS, type AccentRegion, type LanguageAccents } from "@/lib/accent-regions";
-import { CountryPopup, findCountryMatch, type CountryPopupData } from "@/components/CountryPopup";
 import { getLocationsForLanguage, LOCATION_ICONS } from "@/data/map-locations";
 import { getLanguageProgress, subscribeLessonProgress } from "@/lib/lesson-store";
 import type { MapLocation, MapLocationTier, LanguageProgress } from "@/lib/lesson-types";
@@ -27,140 +25,6 @@ const STARS = [
   { left: "62%", top: "84%", size: 1.1, opacity: 0.5 },
   { left: "33%", top: "62%", size: 1.3, opacity: 0.62 },
 ];
-
-// Language → representative speaker-city markers (lat, lng).
-const LANG_MARKERS: Record<string, Array<{ lat: number; lng: number; label: string }>> = {
-  en: [
-    { lat: 40.7128, lng: -74.006, label: "New York" },
-    { lat: 51.5074, lng: -0.1278, label: "London" },
-    { lat: -33.8688, lng: 151.2093, label: "Sydney" },
-    { lat: 28.6139, lng: 77.209, label: "Delhi" },
-  ],
-  es: [
-    { lat: 40.4168, lng: -3.7038, label: "Madrid" },
-    { lat: 19.4326, lng: -99.1332, label: "Mexico City" },
-    { lat: -34.6037, lng: -58.3816, label: "Buenos Aires" },
-    { lat: 4.711, lng: -74.0721, label: "Bogotá" },
-  ],
-  fr: [
-    { lat: 48.8566, lng: 2.3522, label: "Paris" },
-    { lat: 45.5017, lng: -73.5673, label: "Montréal" },
-    { lat: 14.6928, lng: -17.4467, label: "Dakar" },
-    { lat: 50.8503, lng: 4.3517, label: "Brussels" },
-  ],
-  de: [
-    { lat: 52.52, lng: 13.405, label: "Berlin" },
-    { lat: 48.2082, lng: 16.3738, label: "Vienna" },
-    { lat: 47.3769, lng: 8.5417, label: "Zürich" },
-  ],
-  it: [
-    { lat: 41.9028, lng: 12.4964, label: "Rome" },
-    { lat: 45.4642, lng: 9.19, label: "Milan" },
-  ],
-  ja: [{ lat: 35.6762, lng: 139.6503, label: "Tokyo" }],
-  zh: [
-    { lat: 39.9042, lng: 116.4074, label: "Beijing" },
-    { lat: 25.033, lng: 121.5654, label: "Taipei" },
-    { lat: 1.3521, lng: 103.8198, label: "Singapore" },
-  ],
-  nl: [
-    { lat: 52.3676, lng: 4.9041, label: "Amsterdam" },
-    { lat: 50.8503, lng: 4.3517, label: "Brussels" },
-  ],
-  hi: [{ lat: 28.6139, lng: 77.209, label: "Delhi" }],
-};
-
-// ── Language → countries mapping ─────────────────────────────────────────────
-
-const LANG_DATA: Record<string, { countries: string[]; count: number }> = {
-  en: { countries: ["United States", "United Kingdom", "Canada", "Australia", "India", "South Africa", "Nigeria", "Ireland"], count: 59 },
-  es: { countries: ["Spain", "Mexico", "Colombia", "Argentina", "Peru", "Chile", "Venezuela", "Ecuador"], count: 21 },
-  fr: { countries: ["France", "Canada", "Belgium", "Switzerland", "Senegal", "Ivory Coast", "Morocco", "Cameroon"], count: 29 },
-  de: { countries: ["Germany", "Austria", "Switzerland", "Luxembourg", "Liechtenstein"], count: 6 },
-  it: { countries: ["Italy", "Switzerland", "San Marino", "Vatican"], count: 4 },
-  ja: { countries: ["Japan"], count: 1 },
-  zh: { countries: ["China", "Taiwan", "Singapore"], count: 3 },
-  nl: { countries: ["Netherlands", "Belgium", "Suriname"], count: 3 },
-  hi: { countries: ["India", "Fiji", "Nepal"], count: 3 },
-};
-
-// ── Globe.GL HTML ─────────────────────────────────────────────────────────────
-
-function buildGlobeHtml(knownCodes: string[]): string {
-  const highlightLabels = knownCodes
-    .flatMap((c) => (LANG_DATA[c]?.countries ?? []))
-    .map((c) => JSON.stringify(c));
-  const highlights = `[${highlightLabels.join(",")}]`;
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; }
-    html, body { width:100%; height:100%; background:#080D18; overflow:hidden; }
-    #g { width:100vw; height:100vh; }
-    #tip { position:fixed;bottom:12px;left:50%;transform:translateX(-50%);
-           font-family:-apple-system,sans-serif;font-size:12px;color:rgba(255,255,255,0.28);
-           pointer-events:none; }
-  </style>
-</head>
-<body>
-  <div id="g"></div>
-  <div id="tip">Drag to rotate · Pinch to zoom</div>
-  <script src="https://unpkg.com/globe.gl@2.26.4/dist/globe.gl.min.js"></script>
-  <script>
-    var highlights = ${highlights};
-
-    fetch('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson')
-      .then(r => r.json())
-      .then(world => {
-        var Globe = GlobeGl()
-          .width(window.innerWidth)
-          .height(window.innerHeight)
-          .backgroundColor('rgba(0,0,0,0)')
-          .showGraticules(false)
-          .atmosphereColor('rgba(80,160,255,0.22)')
-          .atmosphereAltitude(0.18)
-          .polygonsData(world.features)
-          .polygonCapColor(feat => {
-            var name = feat.properties.NAME || feat.properties.name || '';
-            return highlights.indexOf(name) >= 0
-              ? 'rgba(196,166,124,0.82)'
-              : 'rgba(38,48,78,0.88)';
-          })
-          .polygonSideColor(() => 'rgba(20,28,50,0.6)')
-          .polygonStrokeColor(() => 'rgba(80,110,180,0.18)')
-          .polygonAltitude(feat => {
-            var name = feat.properties.NAME || feat.properties.name || '';
-            return highlights.indexOf(name) >= 0 ? 0.018 : 0.006;
-          })
-          (document.getElementById('g'));
-
-        Globe.controls().autoRotate = true;
-        Globe.controls().autoRotateSpeed = 0.35;
-        Globe.controls().enableZoom = true;
-        Globe.controls().minDistance = 180;
-        Globe.controls().maxDistance = 400;
-        Globe.pointOfView({ lat: 20, lng: 10, altitude: 2.2 }, 0);
-      })
-      .catch(function() {
-        var Globe = GlobeGl()
-          .width(window.innerWidth)
-          .height(window.innerHeight)
-          .backgroundColor('rgba(0,0,0,0)')
-          .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
-          .atmosphereColor('rgba(80,160,255,0.22)')
-          .atmosphereAltitude(0.18)
-          (document.getElementById('g'));
-        Globe.controls().autoRotate = true;
-        Globe.controls().autoRotateSpeed = 0.35;
-      });
-  </script>
-</body>
-</html>`;
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -213,58 +77,7 @@ export default function GlobeScreen() {
 
   const globeSize = Math.min(SW * 0.96, 380);
 
-  // Flatten markers: language-city pins (blue) + unlocked location pins (gold)
-  const markers = useMemo<EarthMarker[]>(() => {
-    const list: EarthMarker[] = [];
-    // Language speaker-city pins
-    knownLanguages.forEach((code) => {
-      const pins = LANG_MARKERS[code] || [];
-      pins.forEach((p, i) => {
-        list.push({
-          id: `lang-${code}-${i}`,
-          lat: p.lat,
-          lng: p.lng,
-          label: p.label,
-          color: "#60A5FA",
-          size: 1.0,
-        });
-      });
-    });
-    // Unlocked lesson-location pins (gold/amber — visually distinct from language markers)
-    mapLocations.forEach((loc) => {
-      const tier = langProgress?.locationTiers[loc.id] ?? "locked";
-      if (tier === "locked") return;
-      const tierColor = tier === "gold" ? "#C9A465" : tier === "silver" ? "#A0A0A0" : "#CD7F32";
-      list.push({
-        id: `loc-${loc.id}`,
-        lat: loc.lat,
-        lng: loc.lng,
-        label: loc.name,
-        color: tierColor,
-        size: 0.52,
-      });
-    });
-    return list;
-  }, [knownLanguages, mapLocations, langProgress]);
-
-  // Country names we want polygon-tinted as "reachable".
-  const highlightCountries = useMemo(() => {
-    const set = new Set<string>();
-    knownLanguages.forEach((code) => {
-      (LANG_DATA[code]?.countries || []).forEach((c) => set.add(c));
-    });
-    return Array.from(set);
-  }, [knownLanguages]);
   const [openAccents, setOpenAccents] = useState<LanguageAccents | null>(null);
-
-  // Liquid-glass popup shown when the user taps a highlighted country on
-  // the globe. We reverse-look-up the raw geojson country name against the
-  // user's known languages to figure out which accent region to show.
-  const [openCountry, setOpenCountry] = useState<CountryPopupData | null>(null);
-  const onCountryTap = (countryName: string) => {
-    const match = findCountryMatch(countryName, knownLanguages);
-    if (match) setOpenCountry(match);
-  };
 
   const totalSpeakersM = useMemo(() => {
     return knownLanguages.reduce((acc, code) => acc + (ACCENT_REGIONS[code]?.speakersMillions ?? 0), 0);
@@ -302,21 +115,11 @@ export default function GlobeScreen() {
               } as any}
             />
           ))}
-          <EarthGlobe
+          <NativeGlobe
             size={globeSize}
-            highlightCountries={highlightCountries}
-            markers={markers}
+            highlightLanguages={knownLanguages}
             autoRotate
-            onCountryTap={onCountryTap}
-            onMarkerTap={(id) => {
-              if (!id.startsWith("loc-")) return;
-              const locId = id.replace("loc-", "");
-              const loc = mapLocations.find((l) => l.id === locId);
-              if (!loc) return;
-              const tier = (langProgress?.locationTiers[loc.id] ?? "locked") as MapLocationTier;
-              setTappedLocation({ loc, tier });
-            }}
-            background={SPACE_BG}
+            showStats={false}
           />
 
           {/* Section label top-left */}
@@ -334,8 +137,6 @@ export default function GlobeScreen() {
             YOUR WORLD
           </Text>
 
-          {/* Tap hint bottom — gently guides the user that the globe is
-              interactive without being noisy. */}
           <View
             style={{
               position: "absolute",
@@ -352,7 +153,7 @@ export default function GlobeScreen() {
               borderColor: "rgba(255,255,255,0.12)",
             }}
           >
-            <Ionicons name="finger-print-outline" size={12} color="rgba(180,210,255,0.85)" />
+            <Ionicons name="globe-outline" size={12} color="rgba(180,210,255,0.85)" />
             <Text
               style={{
                 fontSize: 11,
@@ -361,7 +162,7 @@ export default function GlobeScreen() {
                 letterSpacing: 0.3,
               }}
             >
-              Tap a highlighted country
+              Drag to spin the globe
             </Text>
           </View>
         </View>
@@ -461,9 +262,10 @@ export default function GlobeScreen() {
                 const tier = langProgress?.locationTiers[loc.id] || "locked";
                 const unlocked = tier !== "locked";
                 return (
-                  <View
+                  <Pressable
                     key={loc.id}
-                    style={{
+                    onPress={() => unlocked && setTappedLocation({ loc, tier: tier as MapLocationTier })}
+                    style={({ pressed }) => ({
                       backgroundColor: unlocked ? COLORS.surface : "rgba(0,0,0,0.02)",
                       borderRadius: 16,
                       padding: 16,
@@ -472,12 +274,12 @@ export default function GlobeScreen() {
                       alignItems: "center",
                       borderWidth: unlocked ? 1 : 0,
                       borderColor: TIER_GLOW[tier],
-                      opacity: unlocked ? 1 : 0.5,
+                      opacity: (unlocked ? 1 : 0.5) * (pressed ? 0.88 : 1),
                       shadowColor: unlocked ? TIER_TEXT[tier] : "transparent",
                       shadowOffset: { width: 0, height: 0 },
                       shadowOpacity: unlocked ? 0.25 : 0,
                       shadowRadius: unlocked ? 12 : 0,
-                    }}
+                    })}
                   >
                     <View
                       style={{
@@ -514,7 +316,7 @@ export default function GlobeScreen() {
                     {!unlocked && (
                       <Ionicons name="lock-closed" size={16} color="#CCC" />
                     )}
-                  </View>
+                  </Pressable>
                 );
               })}
             </View>
@@ -544,9 +346,6 @@ export default function GlobeScreen() {
 
       {/* ── Accent region popup ──────────────────────────────── */}
       <AccentSheet accents={openAccents} onClose={() => setOpenAccents(null)} />
-
-      {/* ── Country tap popup (liquid glass) ─────────────────── */}
-      <CountryPopup data={openCountry} onClose={() => setOpenCountry(null)} />
 
       {/* ── Unlocked location pin popup ───────────────────────── */}
       <Modal

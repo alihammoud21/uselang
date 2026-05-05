@@ -30,6 +30,7 @@ import {
   type ErrorClassification,
 } from "@/lib/tutor-engine";
 import { getCurriculum } from "@/data/lessons";
+import { getHintTokens, consumeHintToken } from "@/lib/shop-store";
 import { getLocationsForLanguage } from "@/data/map-locations";
 import {
   completePartInLesson,
@@ -94,6 +95,8 @@ export default function LessonScreen() {
   const [sessionXP, setSessionXP] = useState(0);
   const [showXPPop, setShowXPPop] = useState(false);
   const [correctStreak, setCorrectStreak] = useState(0);
+  const [hintCount, setHintCount] = useState(0);
+  const [hintRevealed, setHintRevealed] = useState(false);
 
   // AI evaluation (tutor engine)
   const [aiEval, setAiEval] = useState<LearnEvaluation | null>(null);
@@ -103,6 +106,11 @@ export default function LessonScreen() {
   const completionOpacity = useRef(new RNAnimated.Value(0)).current;
   const completionScale = useRef(new RNAnimated.Value(0.8)).current;
   const scrollRef = useRef<ScrollView>(null);
+
+  // ── Load hint count ───────────────────────────────────────────────────────
+  useEffect(() => {
+    getHintTokens().then(setHintCount).catch(() => {});
+  }, []);
 
   // ── Load lesson ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -146,6 +154,7 @@ export default function LessonScreen() {
 
   // ── Reset exercise state ─────────────────────────────────────────────────
   const resetExerciseState = useCallback(() => {
+    setHintRevealed(false);
     setSelectedOption(null);
     setAnswered(false);
     setIsCorrect(false);
@@ -533,6 +542,39 @@ export default function LessonScreen() {
             borderTopColor: BORDER,
           }}
         >
+          {/* Hint token button — only show when not yet answered and tokens available */}
+          {!answered && hintCount > 0 && !hintRevealed && currentExercise &&
+            (currentExercise.type === "multiple-choice" ||
+             currentExercise.type === "fill-blank" ||
+             currentExercise.type === "translate") && (
+            <Pressable
+              onPress={async () => {
+                const ok = await consumeHintToken();
+                if (!ok) return;
+                setHintCount((n) => Math.max(0, n - 1));
+                setHintRevealed(true);
+                if (currentExercise.type === "fill-blank") {
+                  setTextAnswer(currentExercise.answer);
+                } else if (currentExercise.type === "translate" && currentExercise.acceptedAnswers?.length) {
+                  setTextAnswer(currentExercise.acceptedAnswers[0]);
+                } else if (currentExercise.type === "multiple-choice") {
+                  setSelectedOption(currentExercise.correctIndex);
+                }
+              }}
+              style={({ pressed }) => ({
+                flexDirection: "row", alignItems: "center", justifyContent: "center",
+                gap: 6, backgroundColor: "rgba(212,160,23,0.10)",
+                borderRadius: 12, paddingVertical: 10, marginBottom: 10,
+                opacity: pressed ? 0.80 : 1,
+                borderWidth: 1, borderColor: "rgba(212,160,23,0.25)",
+              })}
+            >
+              <Ionicons name="bulb-outline" size={16} color="#D4A017" />
+              <Text style={{ fontSize: 13, fontFamily: F.sansSemi, color: "#D4A017" }}>
+                Use Hint Token ({hintCount} left)
+              </Text>
+            </Pressable>
+          )}
           {answered ? (
             <View>
               {/* Feedback */}

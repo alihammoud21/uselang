@@ -2240,6 +2240,20 @@ const EN_WORDS: Record<string, WordEntry> = {
   bad:     { zh:"坏", zhPin:"huài",  es:"malo",     fr:"mauvais" },
   hot:     { zh:"热", zhPin:"rè",    es:"caliente", fr:"chaud" },
   cold:    { zh:"冷", zhPin:"lěng",  es:"frío",     fr:"froid" },
+  // Weather and descriptive adjectives
+  nice:      { zh:"好",   zhPin:"hǎo",     es:"bueno",      fr:"agréable" },
+  beautiful: { zh:"美",   zhPin:"měi",     es:"hermoso",    fr:"beau" },
+  sunny:     { zh:"晴",   zhPin:"qíng",    es:"soleado",    fr:"ensoleillé" },
+  cloudy:    { zh:"阴",   zhPin:"yīn",     es:"nublado",    fr:"nuageux" },
+  warm:      { zh:"暖",   zhPin:"nuǎn",    es:"cálido",     fr:"chaud" },
+  cool:      { zh:"凉",   zhPin:"liáng",   es:"fresco",     fr:"frais" },
+  rainy:     { zh:"雨",   zhPin:"yǔ",      es:"lluvioso",   fr:"pluvieux" },
+  // Common nouns — nature/weather
+  weather:   { zh:"天气", zhPin:"tiānqì",  es:"tiempo",     fr:"temps" },
+  sky:       { zh:"天空", zhPin:"tiānkōng",es:"cielo",      fr:"ciel" },
+  sun:       { zh:"太阳", zhPin:"tàiyáng", es:"sol",        fr:"soleil" },
+  rain:      { zh:"雨",   zhPin:"yǔ",      es:"lluvia",     fr:"pluie" },
+  wind:      { zh:"风",   zhPin:"fēng",    es:"viento",     fr:"vent" },
   fast:    { zh:"快", zhPin:"kuài",  es:"rápido",   fr:"rapide" },
   slow:    { zh:"慢", zhPin:"màn",   es:"lento",    fr:"lent" },
   new:     { zh:"新", zhPin:"xīn",   es:"nuevo",    fr:"nouveau" },
@@ -2367,11 +2381,11 @@ export function composeLocalTranslation(
     const entry = EN_WORDS[raw] || EN_WORDS[base];
 
     if (entry) {
-      hits++;
       const tgt = entry[code as "zh" | "es" | "fr"] as string;
       const pin = entry.zhPin;
-      // Skip empty placeholders (articles dropped in zh)
+      // Skip empty placeholders (articles dropped in zh) — don't count as hits
       if (tgt === "") continue;
+      hits++;
       // Progressive marker for zh: insert 在 before -ing verb
       if (code === "zh" && raw.endsWith("ing") && raw.length > 4 && hasProgressive) {
         translatedTokens.push({ src: raw, tgt: "在" + tgt, pin: "zài " + pin });

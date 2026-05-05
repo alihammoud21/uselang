@@ -41,6 +41,9 @@ final class WebContainerViewController: UIViewController {
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.backgroundColor = .clear
         webView.isOpaque = false
+        // Allow Web Speech API (SpeechRecognition) to use the microphone.
+        // Without this the WKUIDelegate is nil and all getUserMedia / SpeechRecognition
+        // requests are silently denied before they even reach the JS error handler.
 
         #if DEBUG
         if #available(iOS 16.4, *) {
@@ -70,6 +73,9 @@ final class WebContainerViewController: UIViewController {
         if webView.navigationDelegate !== coordinator {
             webView.navigationDelegate = coordinator
         }
+        if webView.uiDelegate !== coordinator {
+            webView.uiDelegate = coordinator
+        }
         coordinator.attach(webView: webView)
 
         guard !loadedInitialURL else { return }
@@ -78,7 +84,7 @@ final class WebContainerViewController: UIViewController {
     }
 }
 
-final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     private weak var webView: WKWebView?
     private let modelManager: GemmaModelManager
     private let gemmaService: GemmaService
@@ -267,5 +273,21 @@ final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler 
 
         UIApplication.shared.open(targetURL)
         decisionHandler(.cancel)
+    }
+
+    // ── WKUIDelegate: grant microphone access to the web page ─────────────────
+    // Required for Web Speech API (SpeechRecognition) to work inside WKWebView.
+    // Without this delegate the browser silently denies mic requests.
+    @available(iOS 15.0, *)
+    func webView(
+        _ webView: WKWebView,
+        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+        // Grant microphone (and camera) access — iOS already shows its own
+        // system permission dialog the first time so the user retains control.
+        decisionHandler(.grant)
     }
 }

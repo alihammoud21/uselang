@@ -18,7 +18,7 @@ import {
   type NativeTtsStatus,
 } from "./offline-tts";
 import { speakRoutedText, stopRoutedTts } from "./tts-router";
-import { getGemmaState, chatWithGemma } from "./gemma-engine";
+import { getGemmaState, chatWithGemma, isGemmaSupported } from "./gemma-engine";
 import { postTutorSessionGemma } from "./gemma-tutor";
 import { type TutorRequest, type TutorResponse } from "./tutor-api";
 import { runWithTimeout } from "./safe-async";
@@ -126,7 +126,7 @@ function humanLang(code: string): string {
   return LANG_HUMAN[code] || LANG_HUMAN[code.split("-")[0]] || code;
 }
 
-async function buildReadiness(targetLang: string, nativeLang: string): Promise<OfflineReadiness> {
+async function buildReadiness(targetLang: string, nativeLang: string, mode?: OfflineMode): Promise<OfflineReadiness> {
   const [speech, tts, nativeTts] = await Promise.all([
     getNativeSpeechReadinessStatus(targetLang),
     getOfflineTtsStatus(targetLang),
@@ -157,11 +157,28 @@ async function buildReadiness(targetLang: string, nativeLang: string): Promise<O
   } else if (!speech.permissionGranted) {
     blockingMessage = speech.permissionCanAskAgain
       ? "Allow microphone access to start voice practice."
-      : "Microphone is blocked. Open iOS Settings -> Lang -> Microphone and enable it.";
+      : "Microphone is blocked. Open iOS Settings → Lang → Microphone and enable it.";
     blockingAction = "permission";
-  } else if (!speech.recognitionAvailable && !speech.localeSupported) {
-    blockingMessage = "Speech recognition is not available on this device.";
-    blockingAction = "install-language";
+  }
+  // Note: We intentionally do NOT block on recognitionAvailable/localeSupported here.
+  // expo-speech-recognition may report false negatives on physical devices even when
+  // SFSpeechRecognizer is fully functional. If the module is present and mic is
+  // granted, we let the user attempt recognition — the native bridge will surface
+  // any real failure inline.
+
+  // Live Lang (translate mode) REQUIRES the real Gemma model — stubs produce
+  // garbage translations. Block here so the user sees a clear "Download Model"
+  // screen instead of nonsense output.
+  if (!blockingMessage && mode === "translate") {
+    if (gemma.usingStub || !gemma.loaded) {
+      if (!isGemmaSupported()) {
+        blockingMessage = "Live translation requires a dev build with the AI engine. Rebuild with `expo run:ios`.";
+        blockingAction = "rebuild";
+      } else {
+        blockingMessage = "Live Lang needs the AI model for real-time translation. Download it to get started (~2.5 GB, one-time).";
+        blockingAction = "load-model";
+      }
+    }
   }
 
   return {
@@ -468,6 +485,10 @@ export function createOfflineVoiceSession(opts: OfflineVoiceSessionOpts): Offlin
 
   async function processTranslate(text: string, turnID: number): Promise<string> {
     if (!isCurrent(turnID)) throw new Error("stale_turn");
+    // Hard guard: Live Lang NEVER uses the stub for translation.
+    if (getGemmaState().usingStub) {
+      throw new Error("Real AI model required for translation. Download the model first.");
+    }
     const started = Date.now();
     const fromLang = humanLang(opts.targetLang);
     const toLang = humanLang(opts.nativeLang);
@@ -670,7 +691,7 @@ export function createOfflineVoiceSession(opts: OfflineVoiceSessionOpts): Offlin
     stopped = true;
     nextTurn();
     setSnap({ state: "checking", errorMessage: "" });
-    const r = await buildReadiness(opts.targetLang, opts.nativeLang);
+    const r = await buildReadiness(opts.targetLang, opts.nativeLang, opts.mode);
     latestReadiness = r;
     if (!r.ready) {
       setSnap({ state: "error", errorMessage: r.blockingMessage || "Error" });

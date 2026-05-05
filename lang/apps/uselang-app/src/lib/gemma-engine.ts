@@ -672,8 +672,10 @@ export async function generateTutorJson(
       maxTokens: 100, // headroom for 2-line output
       temperature: 0.1,
     });
-    // Clean common model quirks: leading/trailing quotes, "Translation:" prefix
+    // Clean common model quirks: leading/trailing quotes, "Translation:" prefix,
+    // and Gemma chat-template special tokens (<start_of_turn> etc.)
     const cleaned = rawOutput
+      .replace(/<\/?(?:start_of_turn|end_of_turn)>/g, "")
       .replace(/^["'\u201c\u201d]+|["'\u201c\u201d]+$/g, "")
       .replace(/^(?:translation|answer|result|here)\s*[:=]\s*/i, "")
       .trim();

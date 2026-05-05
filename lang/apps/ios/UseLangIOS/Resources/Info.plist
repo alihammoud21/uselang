@@ -31,6 +31,8 @@
 	<string>UseLang connects to your local development server so you can test on your phone.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>UseLang listens to your speech to coach your pronunciation.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>UseLang uses speech recognition to understand your pronunciation and give you feedback.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchScreen</key>

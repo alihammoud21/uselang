@@ -7,36 +7,36 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		111111111111111111111101 /* OfflineLessonSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111001 /* OfflineLessonSystem.swift */; };
+		111111111111111111111102 /* OfflineLessonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111002 /* OfflineLessonViews.swift */; };
+		111111111111111111111103 /* OfflineLessons.json in Resources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111003 /* OfflineLessons.json */; };
+		2233445566778899001122BB /* RuntimeConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3344556677889900112233CC /* RuntimeConfig.swift */; };
 		37E064A581222E4958BC41EA /* WebContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C88B89C62B6A52FBA47186DA /* WebContainerView.swift */; };
 		436E0FE48F59FFB5AA386A6B /* UseLangApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5F197BFC36F4ECCF4D06690 /* UseLangApp.swift */; };
 		6B3811394FBA35BE74B18554 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93FDFFBBCCC3F1EF3E6311C7 /* RootView.swift */; };
 		AA11223344556677889900AA /* GemmaModelManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1E2D3C4B5A6F7E8D9C0B1A2 /* GemmaModelManager.swift */; };
 		BB11223344556677889900BB /* GemmaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC11223344556677889900CC /* GemmaService.swift */; };
 		DD11223344556677889900DD /* GemmaStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE11223344556677889900EE /* GemmaStatusView.swift */; };
-		FF11223344556677889900FF /* GemmaPrompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1122334455667788990011AA /* GemmaPrompts.swift */; };
-		2233445566778899001122BB /* RuntimeConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3344556677889900112233CC /* RuntimeConfig.swift */; };
-		111111111111111111111101 /* OfflineLessonSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111001 /* OfflineLessonSystem.swift */; };
-		111111111111111111111102 /* OfflineLessonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111002 /* OfflineLessonViews.swift */; };
-		111111111111111111111103 /* OfflineLessons.json in Resources */ = {isa = PBXBuildFile; fileRef = 111111111111111111111003 /* OfflineLessons.json */; };
 		E2624CA6FD10E15DAA0EB318 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 17EA1E3DCA61A342CFA97741 /* Assets.xcassets */; };
+		FF11223344556677889900FF /* GemmaPrompts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1122334455667788990011AA /* GemmaPrompts.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		111111111111111111111001 /* OfflineLessonSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineLessonSystem.swift; sourceTree = "<group>"; };
+		111111111111111111111002 /* OfflineLessonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineLessonViews.swift; sourceTree = "<group>"; };
+		111111111111111111111003 /* OfflineLessons.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = OfflineLessons.json; sourceTree = "<group>"; };
+		1122334455667788990011AA /* GemmaPrompts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GemmaPrompts.swift; sourceTree = "<group>"; };
 		17EA1E3DCA61A342CFA97741 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		1D8C425035E242AEA2398715 /* UseLangIOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = UseLangIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1D8C425035E242AEA2398715 /* UseLang.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UseLang.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3344556677889900112233CC /* RuntimeConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfig.swift; sourceTree = "<group>"; };
 		470128C567B6DE1260E868A4 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		4F0EFAF9300F978A0D86C98E /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 		93FDFFBBCCC3F1EF3E6311C7 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		A5F197BFC36F4ECCF4D06690 /* UseLangApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UseLangApp.swift; sourceTree = "<group>"; };
 		C88B89C62B6A52FBA47186DA /* WebContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebContainerView.swift; sourceTree = "<group>"; };
-		F1E2D3C4B5A6F7E8D9C0B1A2 /* GemmaModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GemmaModelManager.swift; sourceTree = "<group>"; };
 		CC11223344556677889900CC /* GemmaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GemmaService.swift; sourceTree = "<group>"; };
 		EE11223344556677889900EE /* GemmaStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GemmaStatusView.swift; sourceTree = "<group>"; };
-		1122334455667788990011AA /* GemmaPrompts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GemmaPrompts.swift; sourceTree = "<group>"; };
-		3344556677889900112233CC /* RuntimeConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeConfig.swift; sourceTree = "<group>"; };
-		111111111111111111111001 /* OfflineLessonSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineLessonSystem.swift; sourceTree = "<group>"; };
-		111111111111111111111002 /* OfflineLessonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineLessonViews.swift; sourceTree = "<group>"; };
-		111111111111111111111003 /* OfflineLessons.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = OfflineLessons.json; sourceTree = "<group>"; };
+		F1E2D3C4B5A6F7E8D9C0B1A2 /* GemmaModelManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GemmaModelManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -90,7 +90,7 @@
 		C088F4AB7CC4DECDF5A40F24 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				1D8C425035E242AEA2398715 /* UseLangIOS.app */,
+				1D8C425035E242AEA2398715 /* UseLang.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -113,7 +113,7 @@
 			packageProductDependencies = (
 			);
 			productName = UseLangIOS;
-			productReference = 1D8C425035E242AEA2398715 /* UseLangIOS.app */;
+			productReference = 1D8C425035E242AEA2398715 /* UseLang.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -124,8 +124,6 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
-				TargetAttributes = {
-				};
 			};
 			buildConfigurationList = DF735859377E2B4C75DF19E2 /* Build configuration list for PBXProject "UseLangIOS" */;
 			developmentRegion = en;
@@ -187,6 +185,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = 5RKM346FJ5;
 				INFOPLIST_FILE = UseLangIOS/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -275,6 +274,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				DEVELOPMENT_ASSET_PATHS = "";
+				DEVELOPMENT_TEAM = 5RKM346FJ5;
 				INFOPLIST_FILE = UseLangIOS/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (

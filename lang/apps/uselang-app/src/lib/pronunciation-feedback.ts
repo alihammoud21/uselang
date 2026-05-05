@@ -1,104 +1,227 @@
 // ── Pronunciation feedback ────────────────────────────────────────────────
-// Compares a recognized attempt against the target phrase and returns a
-// human-readable score plus phrase-specific guidance.
+// Word-level scoring engine. Compares a speech-recognizer transcript against
+// the target phrase using word-level alignment with partial credit.
 //
-// This is intentionally NOT a real phonetic scorer — that would need an
-// acoustic model. What this gives the user instead:
-//
-//   • A character-level similarity score (0..1). The native iOS recognizer
-//     already returns a transcript that's been audio-matched to the user's
-//     speech, so character similarity between transcript and target is a
-//     reasonable proxy for "did the syllables come through".
-//
-//   • A list of specific syllables / words that didn't match. The Quick
-//     Tutor shows these inline so the learner sees exactly what to fix.
-//
-//   • A single short suggestion line that maps the score range to the kind
-//     of feedback a real coach would give.
-//
-// We never claim "your tones were wrong" — only the bundled vision/audio
-// model can judge that. The honest, helpful version of feedback is: did
-// the recognizer hear the right syllables, and which ones to retry.
+// Key improvements over character-level matching:
+//   • Dropped syllables are caught (e.g. "quero" vs "quiero" = partial, not full)
+//   • missingSegments returns whole words, not individual characters
+//   • Per-word match status powers a visual green/amber/red diff in the UI
+//   • Native-language detection warns if the user spoke in English instead
+//   • matchedWords / totalWords enable a "3 of 5 words" progress indicator
+
+export type WordMatchStatus = "matched" | "partial" | "missed";
+
+export interface WordMatch {
+  /** The original word from the target phrase (preserving casing). */
+  word: string;
+  /** How well this word was matched in the attempt. */
+  status: WordMatchStatus;
+  /** 0..1 — character-level similarity for this specific word. */
+  similarity: number;
+}
 
 export interface PronunciationFeedback {
-  /** 0..1 — share of the target characters that matched in the attempt. */
+  /** 0..1 — weighted score across all words. */
   score: number;
   /** Human label for the score range. */
   rating: "spot-on" | "close" | "almost" | "off";
-  /** The character-segments from the target that did NOT appear in the
-   *  attempt's normalized text, e.g. ["想", "去"] for a Mandarin miss. */
+  /** Whole words/syllables from the target that were missed or partial. */
   missingSegments: string[];
   /** One coaching line keyed to the rating. */
   suggestion: string;
+  /** Per-word match breakdown — powers the visual diff UI. */
+  wordMatches: WordMatch[];
+  /** How many words were fully or partially matched. */
+  matchedWords: number;
+  /** Total words in the target phrase. */
+  totalWords: number;
+  /** True if the attempt appears to be in the wrong language. */
+  wrongLanguageDetected: boolean;
 }
 
-const PUNCT_RE = /[。．\.！?？，,;:、'"()\[\]]/g;
+// ── Helpers ──────────────────────────────────────────────────────────────
 
-function normalize(text: string): string {
-  return text.replace(PUNCT_RE, "").replace(/\s+/g, "").toLowerCase().trim();
+const PUNCT_RE = /[。．\.！?？，,;:、'"""''()\[\]¿¡«»‹›]/g;
+const CJK_RE = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/;
+
+function stripPunct(text: string): string {
+  return text.replace(PUNCT_RE, "").trim();
 }
+
+function lower(text: string): string {
+  return text.toLowerCase();
+}
+
+/** Split into words. For CJK text, each character is a "word". */
+function tokenize(raw: string): string[] {
+  const cleaned = stripPunct(raw);
+  if (!cleaned) return [];
+  if (CJK_RE.test(cleaned)) {
+    // CJK: each character is a token (spaces between are removed)
+    return cleaned.replace(/\s+/g, "").split("");
+  }
+  return cleaned.split(/\s+/);
+}
+
+/** Character-level similarity between two strings (0..1). */
+function charSimilarity(a: string, b: string): number {
+  if (!a && !b) return 1;
+  if (!a || !b) return 0;
+  const la = lower(a);
+  const lb = lower(b);
+  if (la === lb) return 1;
+
+  // Build character multiset from b, count matches against a
+  const counts = new Map<string, number>();
+  for (const ch of lb) counts.set(ch, (counts.get(ch) || 0) + 1);
+  let matched = 0;
+  for (const ch of la) {
+    const left = counts.get(ch) || 0;
+    if (left > 0) {
+      matched++;
+      counts.set(ch, left - 1);
+    }
+  }
+  return matched / Math.max(la.length, lb.length);
+}
+
+/** Find the best-matching word in `pool` for `target`. Returns index + similarity. */
+function bestMatch(target: string, pool: string[]): { idx: number; sim: number } {
+  let bestIdx = -1;
+  let bestSim = 0;
+  for (let i = 0; i < pool.length; i++) {
+    const sim = charSimilarity(target, pool[i]);
+    if (sim > bestSim) {
+      bestSim = sim;
+      bestIdx = i;
+    }
+  }
+  return { idx: bestIdx, sim: bestSim };
+}
+
+// Common English filler words that indicate wrong language
+const ENGLISH_MARKERS = new Set([
+  "the", "a", "an", "is", "am", "are", "was", "were", "i", "you", "he",
+  "she", "it", "we", "they", "my", "your", "this", "that", "and", "but",
+  "or", "not", "have", "has", "do", "does", "can", "will", "would", "should",
+  "what", "how", "where", "when", "why", "who", "hello", "hi", "please",
+  "thank", "thanks", "yes", "no", "okay",
+]);
+
+function detectWrongLanguage(attemptWords: string[], target: string): boolean {
+  // Only flag if target is NOT English (has non-ASCII or CJK)
+  const isTargetEnglish = !CJK_RE.test(target) && /^[a-z\s]+$/i.test(stripPunct(target));
+  if (isTargetEnglish) return false;
+  if (attemptWords.length < 2) return false;
+
+  let englishCount = 0;
+  for (const w of attemptWords) {
+    if (ENGLISH_MARKERS.has(lower(w))) englishCount++;
+  }
+  return englishCount / attemptWords.length >= 0.5;
+}
+
+// ── Main scoring function ────────────────────────────────────────────────
 
 /**
- * Score a recognized attempt against the target phrase.
- *
- * Both inputs come from the same recognizer locale so character
- * normalization is enough — we don't need a multi-locale comparison here.
+ * Score a recognized attempt against the target phrase using word-level
+ * alignment with partial credit and order sensitivity.
  */
 export function comparePronunciation(target: string, attempt: string): PronunciationFeedback {
-  const t = normalize(target);
-  const a = normalize(attempt);
+  const targetWords = tokenize(target);
+  const attemptWords = tokenize(attempt);
 
-  if (!t) {
+  // ── Edge cases ──
+  if (!targetWords.length) {
     return {
-      score: 0,
-      rating: "off",
-      missingSegments: [],
-      suggestion: "I didn't catch the target phrase — try again.",
+      score: 0, rating: "off", missingSegments: [], suggestion: "I didn't catch the target phrase — try again.",
+      wordMatches: [], matchedWords: 0, totalWords: 0, wrongLanguageDetected: false,
     };
   }
-  if (!a) {
+  if (!attemptWords.length) {
     return {
-      score: 0,
-      rating: "off",
-      missingSegments: [...t],
+      score: 0, rating: "off",
+      missingSegments: targetWords,
       suggestion: "I didn't catch any speech. Hold the orb and try again — get close to the mic.",
+      wordMatches: targetWords.map((w) => ({ word: w, status: "missed" as const, similarity: 0 })),
+      matchedWords: 0, totalWords: targetWords.length, wrongLanguageDetected: false,
     };
   }
 
-  // Build a multiset of characters from the attempt so we can decrement as
-  // we walk the target. This counts repeated characters correctly
-  // ("天天" matched against "天" should report one missing 天).
-  const attemptCounts = new Map<string, number>();
-  for (const ch of a) attemptCounts.set(ch, (attemptCounts.get(ch) || 0) + 1);
+  // ── Wrong language detection ──
+  const wrongLanguageDetected = detectWrongLanguage(attemptWords, target);
 
-  let matched = 0;
-  const missing: string[] = [];
-  for (const ch of t) {
-    const left = attemptCounts.get(ch) || 0;
-    if (left > 0) {
-      matched += 1;
-      attemptCounts.set(ch, left - 1);
+  // ── Word-level alignment ──
+  // Greedy left-to-right: for each target word, find the best match in the
+  // remaining attempt pool. Preserves order sensitivity — a word that appears
+  // out of order gets reduced credit.
+  const available = attemptWords.map((w) => lower(w));
+  const wordMatches: WordMatch[] = [];
+  const missingSegments: string[] = [];
+  let totalScore = 0;
+
+  for (let ti = 0; ti < targetWords.length; ti++) {
+    const tw = targetWords[ti];
+    const twLower = lower(tw);
+
+    // Exact match first (order-preserving: prefer matches near expected position)
+    let foundIdx = -1;
+    const idealStart = Math.max(0, ti - 1);
+    const idealEnd = Math.min(available.length, ti + 3);
+
+    // Pass 1: exact match near expected position
+    for (let i = idealStart; i < idealEnd; i++) {
+      if (available[i] === twLower) { foundIdx = i; break; }
+    }
+    // Pass 2: exact match anywhere
+    if (foundIdx === -1) {
+      foundIdx = available.indexOf(twLower);
+    }
+
+    if (foundIdx !== -1) {
+      wordMatches.push({ word: tw, status: "matched", similarity: 1 });
+      totalScore += 1;
+      available[foundIdx] = ""; // consume
+      continue;
+    }
+
+    // No exact match — find best partial match
+    const { idx, sim } = bestMatch(twLower, available);
+    if (idx !== -1 && sim >= 0.5) {
+      // Partial credit: word was recognizable but imperfect
+      const credit = sim >= 0.8 ? 0.85 : sim >= 0.6 ? 0.65 : 0.4;
+      wordMatches.push({ word: tw, status: "partial", similarity: sim });
+      totalScore += credit;
+      available[idx] = ""; // consume
+      missingSegments.push(tw);
     } else {
-      missing.push(ch);
+      // Missed entirely
+      wordMatches.push({ word: tw, status: "missed", similarity: sim > 0 ? sim : 0 });
+      missingSegments.push(tw);
     }
   }
 
-  const score = matched / t.length;
+  const score = targetWords.length > 0 ? totalScore / targetWords.length : 0;
+  const matchedWords = wordMatches.filter((m) => m.status === "matched" || m.status === "partial").length;
+
   const rating: PronunciationFeedback["rating"] =
-    score >= 0.95 ? "spot-on" :
-    score >= 0.75 ? "close" :
-    score >= 0.50 ? "almost" : "off";
+    score >= 0.92 ? "spot-on" :
+    score >= 0.72 ? "close" :
+    score >= 0.45 ? "almost" : "off";
 
-  // Deduplicate missing list while preserving order.
-  const missingSegments = Array.from(new Set(missing));
-
-  // Rotate suggestions so users don't see the same line every attempt
+  // ── Suggestion generation ──
   const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
-  const focusHint = missingSegments.slice(0, 2).join(" / ") || "the rhythm";
-  const isCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(target);
+  const isCJK = CJK_RE.test(target);
+  const focusWords = missingSegments.slice(0, 2);
+  const focusHint = focusWords.length
+    ? focusWords.map((w) => `"${w}"`).join(" and ")
+    : "the rhythm";
 
   let suggestion: string;
-  if (rating === "spot-on") {
+
+  if (wrongLanguageDetected) {
+    suggestion = "It sounds like you spoke in English — try saying it in the target language!";
+  } else if (rating === "spot-on") {
     suggestion = pick([
       "Nailed it! That sounded great.",
       "Perfect pronunciation — you've got this!",
@@ -115,10 +238,10 @@ export function comparePronunciation(target: string, attempt: string): Pronuncia
     suggestion = pick(closeTips);
   } else if (rating === "almost") {
     const almostTips = [
-      `Almost there. The ${missingSegments[0] ? `"${missingSegments[0]}"` : "ending"} sound didn't come through. Slow down and emphasize it.`,
-      `Getting closer! Try saying it one word at a time, then speed up.`,
-      `Good effort! Focus on matching each syllable to what you hear.`,
-      `You're making progress! Listen once more, then try matching the rhythm.`,
+      `Almost there. ${focusWords[0] ? `The word ${focusHint} didn't come through.` : "The ending"} Slow down and emphasize it.`,
+      "Getting closer! Try saying it one word at a time, then speed up.",
+      "Good effort! Focus on matching each syllable to what you hear.",
+      "You're making progress! Listen once more, then try matching the rhythm.",
     ];
     if (isCJK) almostTips.push("Try to match the pitch pattern — listen for which syllables go up vs. down.");
     suggestion = pick(almostTips);
@@ -131,5 +254,9 @@ export function comparePronunciation(target: string, attempt: string): Pronuncia
     ]);
   }
 
-  return { score, rating, missingSegments, suggestion };
+  return {
+    score, rating, missingSegments, suggestion,
+    wordMatches, matchedWords, totalWords: targetWords.length,
+    wrongLanguageDetected,
+  };
 }

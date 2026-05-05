@@ -20,12 +20,17 @@ import {
   type UserProfile,
   type CommitmentLevel,
   type TutorStyle,
+  type TutorTone,
+  type VoiceGender,
 } from "@/lib/user-store";
 import { subscribeGemmaState } from "@/lib/gemma-engine";
 import { goalLabelFor } from "@/lib/goals";
 import { getProgressSummary, getLevel, type ProgressSummary } from "@/lib/progress-store";
 import { scheduleDailyNotification, cancelDailyNotification, getDailyNotificationHour } from "@/lib/daily-notifications";
+import { setTtsVoiceGender } from "@/lib/tts-router";
 import { THEME_IDS, THEMES, getSavedTheme, setSavedTheme, type ThemeId } from "@/lib/theme-store";
+import { getActiveBadge } from "@/lib/shop-store";
+import { useAppTheme } from "@/lib/theme-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -109,24 +114,39 @@ export default function SettingsScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [progressSummary, setProgressSummary] = useState<ProgressSummary | null>(null);
 
-  // Local UI state
-  const [tutorTone, setTutorTone] = useState("Encouraging");
+  // Local UI state — these mirror profile fields so they update instantly on toggle
+  const [tutorTone, setTutorTone] = useState<string>("Encouraging");
   const [autoPlay, setAutoPlay] = useState(true);
   const [phoneticHints, setPhoneticHints] = useState(true);
   const [haptic, setHaptic] = useState(true);
-  const [voiceGender, setVoiceGender] = useState("Auto");
+  const [voiceGender, setVoiceGender] = useState<string>("Auto");
   const [adaptiveDifficulty, setAdaptiveDifficulty] = useState(true);
   const [notifHour, setNotifHour] = useState<number | null>(9);
   const [themeId, setThemeId] = useState<ThemeId>("paper");
+  const [activeBadge, setActiveBadge] = useState<"none" | "polyglot" | "scholar">("none");
+
+  const { themeId: contextThemeId, setTheme: setContextTheme } = useAppTheme();
 
   useEffect(() => {
-    getUserProfile().then(setProfile);
+    getUserProfile().then((p) => {
+      setProfile(p);
+      // Sync local UI state with persisted profile values
+      const toneMap: Record<TutorTone, string> = { friendly: "Friendly", encouraging: "Encouraging", formal: "Formal" };
+      const genderMap: Record<VoiceGender, string> = { female: "Female", male: "Male", auto: "Auto" };
+      setTutorTone(toneMap[p.tutorTone] ?? "Encouraging");
+      setVoiceGender(genderMap[p.voiceGender] ?? "Auto");
+      setAdaptiveDifficulty(p.adaptiveDifficulty);
+    });
     getProgressSummary().then(setProgressSummary);
     getDailyNotificationHour().then(setNotifHour);
     getSavedTheme().then(setThemeId);
+    getActiveBadge().then(setActiveBadge).catch(() => {});
     const unsub = subscribeGemmaState(() => {});
     return unsub;
   }, []);
+
+  // Keep local themeId in sync with context (in case it changes elsewhere)
+  useEffect(() => { setThemeId(contextThemeId); }, [contextThemeId]);
 
   const updateProfile = useCallback(async (patch: Partial<UserProfile>) => {
     await setUserProfile(patch);
@@ -187,7 +207,7 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* ── Masthead ──────────────────────────────────────────────── */}
-        <View style={{ marginTop: 12, marginBottom: 20 }}>
+        <View style={{ marginTop: 24, marginBottom: 20 }}>
           <Text style={S.title}>Settings</Text>
           <Text style={S.subtitle}>Make Lang fit you.</Text>
         </View>
@@ -247,7 +267,28 @@ export default function SettingsScreen() {
             <Text style={S.avatarLetter}>{initial}</Text>
           </View>
           <View style={{ flex: 1, marginLeft: 14 }}>
-            <Text style={S.profileName}>{profile?.userName || "Set your name"}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Text style={S.profileName}>{profile?.userName || "Set your name"}</Text>
+              {activeBadge !== "none" && (
+                <View style={{
+                  flexDirection: "row", alignItems: "center", gap: 3,
+                  backgroundColor: activeBadge === "scholar" ? "rgba(122,74,34,0.12)" : "rgba(92,122,78,0.12)",
+                  borderRadius: 8, paddingHorizontal: 7, paddingVertical: 2,
+                }}>
+                  <Ionicons
+                    name={activeBadge === "scholar" ? "school-outline" : "ribbon-outline"}
+                    size={11}
+                    color={activeBadge === "scholar" ? "#7A4A22" : "#5C7A4E"}
+                  />
+                  <Text style={{
+                    fontSize: 10, fontFamily: F.sansSemi,
+                    color: activeBadge === "scholar" ? "#7A4A22" : "#5C7A4E",
+                  }}>
+                    {activeBadge === "scholar" ? "Scholar" : "Polyglot"}
+                  </Text>
+                </View>
+              )}
+            </View>
             <Text style={S.profileSub}>
               Learning {langLabel} · 12-day streak
             </Text>
@@ -261,18 +302,53 @@ export default function SettingsScreen() {
             Alert.prompt?.("Your name", "What should Lang call you?", (t) => t && updateProfile({ userName: t }))
           } />
           <Row label="Pronouns" value={profile?.pronouns || "Not set"} onPress={() => {
-            const options = ["she/her", "he/him", "they/them", "xe/xem"];
             Alert.alert("Pronouns", "How should Lang refer to you?", [
-              ...options.map((p) => ({ text: p, onPress: () => updateProfile({ pronouns: p }) })),
+              { text: "he/him",  onPress: () => updateProfile({ pronouns: "he/him" }) },
+              { text: "she/her", onPress: () => updateProfile({ pronouns: "she/her" }) },
+              {
+                text: "Other",
+                onPress: () =>
+                  Alert.prompt?.(
+                    "Custom pronouns",
+                    "Type your pronouns (e.g. they/them, ze/zir)",
+                    (text) => { if (text?.trim()) updateProfile({ pronouns: text.trim() }); },
+                    "plain-text",
+                    profile?.pronouns || ""
+                  ),
+              },
               { text: "Cancel", style: "cancel" as const },
             ]);
           }} />
-          <Row label="Native language" value={nativeLangLabel} onPress={() => {}} last />
+          <Row label="Native language" value={nativeLangLabel} onPress={() => {
+            Alert.alert(
+              "Native language",
+              "The language Lang will use to explain things to you.",
+              [
+                ...SUPPORTED_LANGUAGES.map((l) => ({
+                  text: l.label,
+                  onPress: () => updateProfile({ knownLanguages: [l.code] }),
+                })),
+                { text: "Cancel", style: "cancel" as const },
+              ]
+            );
+          }} last />
         </Group>
 
         {/* ── LEARNING ──────────────────────────────────────────────── */}
         <Group label="Learning">
-          <Row label="Target language" value={langLabel} onPress={() => {}} />
+          <Row label="Target language" value={langLabel} onPress={() => {
+            Alert.alert(
+              "Target language",
+              "The language you want to learn.",
+              [
+                ...SUPPORTED_LANGUAGES.map((l) => ({
+                  text: l.label,
+                  onPress: () => updateProfile({ learningLanguage: l.code }),
+                })),
+                { text: "Cancel", style: "cancel" as const },
+              ]
+            );
+          }} />
           <Row label="Accent / dialect" value={profile?.accentDialect || accentDefault} onPress={() => {
             const options = ACCENT_OPTIONS[langCode] ?? ["Standard"];
             Alert.alert("Accent / Dialect", `Choose a ${langLabel} variant:`, [
@@ -303,7 +379,11 @@ export default function SettingsScreen() {
             <SegmentedControl
               options={["Friendly", "Encouraging", "Formal"]}
               value={tutorTone}
-              onChange={setTutorTone}
+              onChange={(v) => {
+                setTutorTone(v);
+                const toneMap: Record<string, TutorTone> = { Friendly: "friendly", Encouraging: "encouraging", Formal: "formal" };
+                updateProfile({ tutorTone: toneMap[v] ?? "encouraging" });
+              }}
             />
             <Text style={[S.controlLabel, { marginTop: 14 }]}>Tutor pace</Text>
             <SegmentedControl
@@ -313,14 +393,24 @@ export default function SettingsScreen() {
             />
             <View style={[S.divider, { marginBottom: 0 }]} />
           </View>
-          <ToggleRow label="Adaptive difficulty" sub="Adjusts as you improve" value={adaptiveDifficulty} onChange={setAdaptiveDifficulty} last />
+          <ToggleRow label="Adaptive difficulty" sub="Adjusts as you improve" value={adaptiveDifficulty} onChange={(v) => { setAdaptiveDifficulty(v); updateProfile({ adaptiveDifficulty: v }); }} last />
         </Group>
 
         {/* ── VOICE ─────────────────────────────────────────────────── */}
         <Group label="Voice">
           <View style={S.innerPad}>
             <Text style={S.controlLabel}>Tutor voice</Text>
-            <SegmentedControl options={["Female", "Male", "Auto"]} value={voiceGender} onChange={setVoiceGender} />
+            <SegmentedControl
+              options={["Female", "Male", "Auto"]}
+              value={voiceGender}
+              onChange={(v) => {
+                setVoiceGender(v);
+                const genderMap: Record<string, VoiceGender> = { Female: "female", Male: "male", Auto: "auto" };
+                const gv = genderMap[v] ?? "auto";
+                updateProfile({ voiceGender: gv });
+                setTtsVoiceGender(gv);
+              }}
+            />
             <View style={[S.divider, { marginBottom: 0 }]} />
           </View>
           <ToggleRow label="Auto-play replies" sub="Tutor speaks immediately after responding" value={autoPlay} onChange={setAutoPlay} />
@@ -349,7 +439,7 @@ export default function SettingsScreen() {
             Alert.alert("Choose a theme", undefined, [
               ...THEME_IDS.map((tid) => ({
                 text: `${THEMES[tid].label} ${THEMES[tid].isDark ? "(Dark)" : "(Light)"}`,
-                onPress: async () => { await setSavedTheme(tid); setThemeId(tid); },
+                onPress: async () => { await setContextTheme(tid); setThemeId(tid); },
               })),
               { text: "Cancel", style: "cancel" as const },
             ]);

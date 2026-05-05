@@ -86,8 +86,9 @@ export default function LiveLangScreen() {
   // ── Teach phase (offline Gemma summary) ──────────────────────────────────
   const teachMe = useCallback(async () => {
     if (linesRef.current.length === 0) return;
-    if (!getGemmaState().loaded) {
-      setTeachError("On-device model isn't loaded — open Settings → Offline.");
+    const gemma = getGemmaState();
+    if (!gemma.loaded || gemma.usingStub) {
+      setTeachError("AI model required — download it from the blocking screen.");
       return;
     }
     setTeaching(true);
@@ -160,7 +161,7 @@ export default function LiveLangScreen() {
           flexDirection: "row",
           alignItems: "center",
           paddingHorizontal: 18,
-          paddingTop: 8,
+          paddingTop: 16,
           paddingBottom: 6,
         }}
       >
@@ -234,6 +235,7 @@ export default function LiveLangScreen() {
           subtitle={`${sourceLabel} → ${targetLabel}`}
           onClose={handleClose}
           onLine={handleLine}
+          autoStart={true}
           continuous={true}
           skipTts={true}
           backgroundColor={L.bg}
@@ -431,7 +433,7 @@ export default function LiveLangScreen() {
             }}
           >
             <ScrollView>
-              {SUPPORTED_LANGUAGES.filter(l => ["fr","es","zh","en"].includes(l.code)).map((lang, idx, arr) => {
+              {SUPPORTED_LANGUAGES.map((lang, idx, arr) => {
                 const selected = pickerOpen === "source" ? lang.code === sourceLang : lang.code === targetLang;
                 return (
                   <Pressable

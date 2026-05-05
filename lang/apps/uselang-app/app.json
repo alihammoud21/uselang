@@ -10,6 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.uselang.app",
+      "deploymentTarget": "16.0",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "UseLang needs microphone access so you can practice speaking languages.",
         "NSSpeechRecognitionUsageDescription": "UseLang uses speech recognition to understand your pronunciation.",

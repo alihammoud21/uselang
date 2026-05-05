@@ -34,6 +34,7 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
   Easing,
@@ -55,11 +56,14 @@ import { SphereOrb } from "@/components/SphereOrb";
 import { getUserProfile } from "@/lib/user-store";
 import { savePhrase } from "@/lib/phrase-store";
 import { recognizeSpeechOnce, SpeechPermissionError, type NativeSpeechSession } from "@/lib/native-speech";
-import { comparePronunciation, type PronunciationFeedback } from "@/lib/pronunciation-feedback";
+import { comparePronunciation, type PronunciationFeedback, type WordMatch } from "@/lib/pronunciation-feedback";
 import { speakRoutedText, stopRoutedTts } from "@/lib/tts-router";
 import { prewarmOfflineTts } from "@/lib/offline-tts";
 import { TongueDiagram } from "@/components/TongueDiagram";
 import { addXP } from "@/lib/progress-store";
+import { hasSlowSpeed } from "@/lib/shop-store";
+import { VoiceSpeedControls, type VoiceRate } from "@/components/VoiceSpeedControls";
+import { setTutorPlaybackRate } from "@/lib/tutor-audio";
 
 const AnimatedView = Animated.createAnimatedComponent(View);
 
@@ -276,6 +280,16 @@ export default function QuickSessionScreen() {
   // Live mic level for the orb's reactive scaling while listening.
   const [, setMicLevel] = useState(0);
   const orbDebounceRef = useRef(false);
+  // Guard: prevent state updates and auto-listen after unmount
+  const mountedRef = useRef(true);
+  // Track the auto-listen delay timeout so we can cancel on unmount
+  const autoListenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Voice speed
+  const [voiceRate, setVoiceRate] = useState<VoiceRate>(1.0);
+  const [slowSpeedOwned, setSlowSpeedOwned] = useState(false);
+
+  // Sync voiceRate into the audio module whenever it changes
+  useEffect(() => { setTutorPlaybackRate(voiceRate); }, [voiceRate]);
 
   // ── Resolve user profile for language defaults + name if not in params ──
   useEffect(() => {
@@ -288,6 +302,7 @@ export default function QuickSessionScreen() {
         prewarmOfflineTts(lang);
       })
       .catch(() => {/* keep defaults */});
+    hasSlowSpeed().then(setSlowSpeedOwned).catch(() => {});
   }, [params.learnLang, params.nativeLang]);
 
   // ── Fetch tutor response on mount ──────────────────────────────────────
@@ -363,19 +378,19 @@ export default function QuickSessionScreen() {
           });
         },
         onEnd: () => {
-          // If autoListen is on, go directly to listening after a brief pause
-          // so the user hears the phrase and then gets to repeat it.
+          if (!mountedRef.current) return;
           if (autoListenAfterPlaybackRef.current) {
             autoListenAfterPlaybackRef.current = false;
             setAiState("idle");
-            // Small delay so the user knows the tutor stopped
-            setTimeout(() => startListeningRef.current?.(), 600);
+            autoListenTimerRef.current = setTimeout(() => {
+              if (mountedRef.current) startListeningRef.current?.();
+            }, 600);
           } else {
             setAiState("idle");
           }
         },
         onError: () => {
-          setAiState("idle");
+          if (mountedRef.current) setAiState("idle");
         },
       },
     );
@@ -398,11 +413,17 @@ export default function QuickSessionScreen() {
     startPlayback(response, true);
   }, [response, startPlayback]);
 
-  // ── Cleanup on unmount: stop any audio that's still playing ────────────
+  // ── Cleanup on unmount: stop audio, mic, and pending timers ────────────
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       stopTutorAudio().catch(() => {});
+      stopRoutedTts().catch(() => {});
+      speechSessionRef.current?.stop();
+      speechSessionRef.current = null;
       if (tipTimerRef.current) clearTimeout(tipTimerRef.current);
+      if (autoListenTimerRef.current) clearTimeout(autoListenTimerRef.current);
     };
   }, []);
 
@@ -470,20 +491,55 @@ export default function QuickSessionScreen() {
         } catch {}
         setAiState("idle");
       } else {
-        // ── FAIL — progressive coaching based on attempt count ──
+        // ── FAIL — score-based varied coaching ──
         setAiState("speaking");
         try {
+          // Pick a coaching line based on score + attempt — never repeat the same line
+          const hasSuggestion = fb.suggestion && !fb.suggestion.startsWith("Score:");
           let coachLine: string;
-          if (attemptNum === 1 || attemptNum === 2) {
-            coachLine = fb.suggestion || "Try again — listen carefully.";
-          } else if (attemptNum === 3) {
-            coachLine = "Try saying it slower, one word at a time. Break it into pieces.";
+          if (fb.score >= 0.80) {
+            // Very close — name the specific issue
+            const options = [
+              hasSuggestion ? fb.suggestion : null,
+              "So close! Focus on the ending sounds.",
+              "Almost perfect — just a small tweak needed.",
+              "You've nearly got it — pay attention to the rhythm.",
+            ].filter(Boolean) as string[];
+            coachLine = options[attemptNum % options.length];
+          } else if (fb.score >= 0.60) {
+            const options = [
+              hasSuggestion ? fb.suggestion : null,
+              "Good effort — listen to how each word connects.",
+              "Not bad! Try matching the stress pattern more closely.",
+              "You're getting there — focus on the middle part.",
+            ].filter(Boolean) as string[];
+            coachLine = options[attemptNum % options.length];
           } else {
-            coachLine = "You're almost there! One more try — you've got this.";
+            const options = [
+              "Let me slow it down for you — listen carefully.",
+              "Try just the first few words to start.",
+              "Break it into smaller pieces — one word at a time.",
+              "Listen to the rhythm first, then try again.",
+            ];
+            coachLine = options[attemptNum % options.length];
           }
           await speakRoutedText({ text: coachLine, languageCode: nativeLang });
-          await new Promise((r) => setTimeout(r, 200));
-          await speakRoutedText({ text: targetPhrase, languageCode: learnLang });
+          await new Promise((r) => setTimeout(r, 250));
+
+          if (fb.score < 0.60 && fb.missingSegments.length > 0 && fb.missingSegments.length <= 3) {
+            // Very low score — replay just the missed words slowly
+            for (const word of fb.missingSegments.slice(0, 3)) {
+              await speakRoutedText({ text: word, languageCode: learnLang, rate: 0.7 });
+              await new Promise((r) => setTimeout(r, 300));
+            }
+            await new Promise((r) => setTimeout(r, 200));
+            await speakRoutedText({ text: targetPhrase, languageCode: learnLang });
+          } else {
+            // Slow-then-fast: demo at 0.75x, pause, then natural speed
+            await speakRoutedText({ text: targetPhrase, languageCode: learnLang, rate: 0.75 });
+            await new Promise((r) => setTimeout(r, 400));
+            await speakRoutedText({ text: targetPhrase, languageCode: learnLang });
+          }
         } catch {}
         setAiState("idle");
       }
@@ -559,35 +615,82 @@ export default function QuickSessionScreen() {
   }, [response, saved, learnLang, phrase]);
 
   // ── Header back ────────────────────────────────────────────────────────
-  const handleClose = useCallback(() => {
-    // Shared: stop all audio THEN navigate. Using .finally() chains the
-    // navigation AFTER stop completes so TTS can't keep playing on the
-    // previous screen after the user has already closed.
-    const doClose = () => {
-      stopTutorAudio()
-        .catch(() => {})
-        .finally(() => {
-          if (router.canGoBack()) router.back();
-          else router.replace("/(tabs)");
-        });
-    };
+  const navigation = useNavigation();
 
-    if (aiState === "listening" || aiState === "speaking" || feedback || lastAttemptText) {
-      // Stop mic immediately so it's not listening while the alert is up
-      speechSessionRef.current?.stop();
-      speechSessionRef.current = null;
-      Alert.alert(
-        "Leave this session?",
-        "You'll lose your current XP progress if you leave.",
-        [
-          { text: "Keep Going", style: "cancel" },
-          { text: "Leave", style: "destructive", onPress: doClose },
-        ],
-      );
+  const doClose = useCallback(() => {
+    stopTutorAudio()
+      .catch(() => {})
+      .finally(() => {
+        if (router.canGoBack()) router.back();
+        else router.replace("/(tabs)");
+      });
+  }, [router]);
+
+  const confirmLeave = useCallback((onConfirm: () => void) => {
+    // Stop mic immediately so it’s not listening while the alert is up
+    speechSessionRef.current?.stop();
+    speechSessionRef.current = null;
+    const xpLine = !mastered && attemptedRef.current && attemptCountRef.current > 0
+      ? "\nYou’ll lose the XP you earned this session."
+      : "";
+    Alert.alert(
+      "Are you sure you want to leave?",
+      `Your progress on this phrase will be lost.${xpLine}`,
+      [
+        { text: "Keep Going", style: "cancel" },
+        {
+          text: "Leave", style: "destructive",
+          onPress: () => {
+            if (!mastered && attemptedRef.current && attemptCountRef.current > 0) {
+              addXP(-5).catch(() => {});
+            }
+            onConfirm();
+          },
+        },
+      ],
+    );
+  }, [mastered]);
+
+  const handleClose = useCallback(() => {
+    // Always warn if the tutor has already loaded a response (session is active)
+    if (response && !mastered) {
+      confirmLeave(doClose);
     } else {
       doClose();
     }
-  }, [router, aiState, feedback, lastAttemptText]);
+  }, [response, mastered, confirmLeave, doClose]);
+
+  // Intercept iOS swipe-back gesture and Android hardware back button
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove" as any, (e: any) => {
+      if (!response || mastered) return; // nothing to warn about
+      e.preventDefault();
+      speechSessionRef.current?.stop();
+      speechSessionRef.current = null;
+      const xpLine = !mastered && attemptedRef.current && attemptCountRef.current > 0
+        ? "\nYou’ll lose the XP you earned this session."
+        : "";
+      Alert.alert(
+        "Are you sure you want to leave?",
+        `Your progress on this phrase will be lost.${xpLine}`,
+        [
+          { text: "Keep Going", style: "cancel" },
+          {
+            text: "Leave", style: "destructive",
+            onPress: () => {
+              if (!mastered && attemptedRef.current && attemptCountRef.current > 0) {
+                addXP(-5).catch(() => {});
+              }
+              stopTutorAudio().catch(() => {}).finally(() => {
+                navigation.dispatch((e as any).data.action);
+              });
+            },
+          },
+        ],
+      );
+    });
+    return unsubscribe;
+  }, [navigation, response, mastered]);
 
   // ── Derived ────────────────────────────────────────────────────────────
   const phoneme = useMemo(() => phonemeFromResponse(response), [response]);
@@ -725,7 +828,33 @@ export default function QuickSessionScreen() {
             </View>
           </AnimatedView>
         ) : response ? (
-          <>
+          <>             
+            {/* Voice speed controls */}
+            {response && (
+              <AnimatedView entering={FadeInUp.delay(80).duration(260).easing(Easing.out(Easing.cubic))}>
+                <VoiceSpeedControls
+                  rate={voiceRate}
+                  onChangeRate={(r) => setVoiceRate(r)}
+                  showSlowSpeed={slowSpeedOwned}
+                  onRepeatSlower={async () => {
+                    if (!response) return;
+                    await stopTutorAudio();
+                    await playTutorAudio(
+                      { audioBase64: response.audioBase64, audioMimeType: response.audioMimeType, audioSegments: response.audioSegments, fallbackText: response.audioText || response.naturalPhrase, languageCode: learnLang, nativeLanguageCode: nativeLang },
+                      { rate: 0.65, onStart: () => setAiState("speaking"), onEnd: () => setAiState("idle"), onError: () => setAiState("idle") }
+                    );
+                  }}
+                  onRepeatNative={async () => {
+                    if (!response) return;
+                    await stopTutorAudio();
+                    await playTutorAudio(
+                      { audioBase64: response.audioBase64, audioMimeType: response.audioMimeType, audioSegments: response.audioSegments, fallbackText: response.audioText || response.naturalPhrase, languageCode: learnLang, nativeLanguageCode: nativeLang },
+                      { rate: 1.0, onStart: () => setAiState("speaking"), onEnd: () => setAiState("idle"), onError: () => setAiState("idle") }
+                    );
+                  }}
+                />
+              </AnimatedView>
+            )}
             {/* Key Concept card */}
             <AnimatedView entering={FadeInUp.delay(120).duration(280).easing(Easing.out(Easing.cubic))}>
               <View style={qStyles.keyConcept}>
@@ -898,18 +1027,12 @@ export default function QuickSessionScreen() {
               </AnimatedView>
             ) : null}
 
-            {/* ── Feedback card ────────────────────────────────────────
-                Renders ONLY after the user attempts the phrase. Shows the
-                target, what was heard, the score, and a retry button.
-                Stacks below Key Concept so the eye flow is:
-                  1. What's the phrase  →  2. What you said  →  3. Try again.
-                Per spec: never fake a score. If the recognizer captured
-                nothing or errored, `lastAttemptText` is empty and we show
-                that fact in the meta line instead of pretending. */}
+            {/* ── Feedback card ─────────────────────────────────────── */}
             {feedback ? (
               <AnimatedView entering={FadeInUp.duration(260).easing(Easing.out(Easing.cubic))}>
                 <View style={[qStyles.feedbackCard, feedbackTone(feedback.rating)]}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 8 }}>
+                  {/* Header: rating + score + attempt count */}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 10 }}>
                     <Ionicons
                       name={
                         feedback.rating === "spot-on" ? "checkmark-circle"
@@ -925,11 +1048,41 @@ export default function QuickSessionScreen() {
                        : feedback.rating === "almost" ? "ALMOST"
                                                       : "TRY AGAIN"}
                     </Text>
-                    <Text style={{ marginLeft: "auto", fontSize: 12, fontWeight: "700", color: SESSION.muted }}>
-                      {Math.round(feedback.score * 100)}%
-                    </Text>
+                    <View style={{ marginLeft: "auto", flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: SESSION.muted }}>
+                        Attempt {attemptCountRef.current}
+                      </Text>
+                      <View style={{
+                        backgroundColor: feedbackIconColor(feedback.rating) + "18",
+                        paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
+                      }}>
+                        <Text style={{ fontSize: 12, fontWeight: "800", color: feedbackIconColor(feedback.rating) }}>
+                          {Math.round(feedback.score * 100)}%
+                        </Text>
+                      </View>
+                    </View>
                   </View>
 
+                  {/* Word count progress */}
+                  {feedback.totalWords > 0 && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}>
+                      <View style={{
+                        flex: 1, height: 4, borderRadius: 2,
+                        backgroundColor: "rgba(17,16,16,0.06)", overflow: "hidden",
+                      }}>
+                        <View style={{
+                          width: `${Math.round((feedback.matchedWords / feedback.totalWords) * 100)}%`,
+                          height: 4, borderRadius: 2,
+                          backgroundColor: feedback.score >= 0.72 ? "#22C55E" : feedback.score >= 0.45 ? SESSION.amber : "#EF4444",
+                        }} />
+                      </View>
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: SESSION.muted, minWidth: 40, textAlign: "right" }}>
+                        {feedback.matchedWords}/{feedback.totalWords}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* You said */}
                   <Text style={qStyles.feedbackTargetLabel}>You said</Text>
                   <Text style={qStyles.feedbackHeard}>
                     {lastAttemptText || "—"}
@@ -937,49 +1090,92 @@ export default function QuickSessionScreen() {
 
                   <View style={{ height: 1, backgroundColor: SESSION.hair, marginVertical: 10 }} />
 
+                  {/* Visual word diff — each word colored by match status */}
                   <Text style={qStyles.feedbackTargetLabel}>Target</Text>
-                  {learnLang.startsWith("zh") ? (
-                    <>
-                      <Text style={[qStyles.feedbackTarget, { fontWeight: "800" }]}>
-                        {response.phonetic || response.naturalPhrase}
-                      </Text>
-                      {response.phonetic ? (
-                        <Text style={{ fontSize: 14, color: "rgba(28,23,20,0.35)", marginTop: 4 }}>
-                          {response.naturalPhrase}
-                        </Text>
-                      ) : null}
-                    </>
+                  {feedback.wordMatches && feedback.wordMatches.length > 0 ? (
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 4 }}>
+                      {feedback.wordMatches.map((wm: WordMatch, i: number) => {
+                        const bgColor =
+                          wm.status === "matched" ? "rgba(34,197,94,0.12)" :
+                          wm.status === "partial" ? "rgba(168,93,46,0.12)" :
+                                                    "rgba(239,68,68,0.12)";
+                        const borderCol =
+                          wm.status === "matched" ? "rgba(34,197,94,0.30)" :
+                          wm.status === "partial" ? "rgba(168,93,46,0.30)" :
+                                                    "rgba(239,68,68,0.30)";
+                        const textColor =
+                          wm.status === "matched" ? "#1A7A3C" :
+                          wm.status === "partial" ? "#7A4A22" :
+                                                    "#C53030";
+                        return (
+                          <View key={`${wm.word}-${i}`} style={{
+                            flexDirection: "row", alignItems: "center",
+                            backgroundColor: bgColor, borderRadius: 8,
+                            borderWidth: 1, borderColor: borderCol,
+                            paddingHorizontal: 8, paddingVertical: 5,
+                            gap: 4,
+                          }}>
+                            <Text style={{ fontSize: 16, fontWeight: "700", color: textColor }}>
+                              {wm.word}
+                            </Text>
+                            {wm.status === "missed" || wm.status === "partial" ? (
+                              <Pressable
+                                hitSlop={6}
+                                onPress={() => {
+                                  speakRoutedText({ text: wm.word, languageCode: learnLang, rate: 0.75 }).catch(() => {});
+                                }}
+                                style={({ pressed }) => ({
+                                  width: 22, height: 22, borderRadius: 11,
+                                  backgroundColor: textColor + "18",
+                                  alignItems: "center", justifyContent: "center",
+                                  opacity: pressed ? 0.7 : 1,
+                                })}
+                              >
+                                <Ionicons name="volume-medium" size={12} color={textColor} />
+                              </Pressable>
+                            ) : (
+                              <Ionicons name="checkmark" size={13} color={textColor} style={{ opacity: 0.7 }} />
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
                   ) : (
-                    <>
-                      <Text style={qStyles.feedbackTarget}>
-                        {response.naturalPhrase}
-                      </Text>
-                      {response.phonetic ? (
-                        <Text style={{ fontSize: 12, color: SESSION.muted, marginTop: 3 }}>
-                          {response.phonetic}
-                        </Text>
-                      ) : null}
-                    </>
+                    <Text style={qStyles.feedbackTarget}>
+                      {response.naturalPhrase}
+                    </Text>
                   )}
-
-                  {feedback.missingSegments.length > 0 ? (
-                    <Text style={qStyles.feedbackMissing}>
-                      Focus on:{" "}
-                      <Text style={{ fontWeight: "800", color: SESSION.ink }}>
-                        {feedback.missingSegments.slice(0, 4).join("  ·  ")}
-                      </Text>
+                  {response.phonetic ? (
+                    <Text style={{ fontSize: 12, color: SESSION.muted, marginTop: 6, fontStyle: "italic" }}>
+                      {learnLang.startsWith("zh") ? response.phonetic : `Say it like: ${response.phonetic}`}
                     </Text>
                   ) : null}
 
+                  {/* Wrong language warning */}
+                  {feedback.wrongLanguageDetected ? (
+                    <View style={{
+                      flexDirection: "row", alignItems: "center", gap: 6,
+                      backgroundColor: "rgba(239,68,68,0.08)", borderRadius: 10,
+                      paddingHorizontal: 10, paddingVertical: 8, marginTop: 10,
+                    }}>
+                      <Ionicons name="warning" size={14} color="#C53030" />
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: "#C53030", flex: 1 }}>
+                        It sounds like you spoke in English — try in {learnLabel}!
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {/* Coaching suggestion */}
                   <Text style={qStyles.feedbackSuggestion}>{feedback.suggestion}</Text>
 
+                  {/* Action buttons */}
                   <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
                     <Pressable
                       onPress={startListening}
                       disabled={aiState === "listening" || aiState === "thinking"}
                       style={({ pressed }) => ({
                         flex: 1,
-                        paddingVertical: 11,
+                        paddingVertical: 12,
                         borderRadius: 14,
                         backgroundColor: SESSION.ink,
                         alignItems: "center",
@@ -997,7 +1193,7 @@ export default function QuickSessionScreen() {
                       disabled={aiState === "speaking"}
                       style={({ pressed }) => ({
                         flex: 1,
-                        paddingVertical: 11,
+                        paddingVertical: 12,
                         borderRadius: 14,
                         backgroundColor: "rgba(255,255,255,0.6)",
                         borderWidth: 1,

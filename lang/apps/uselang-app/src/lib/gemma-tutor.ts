@@ -6,6 +6,7 @@
 import { generateTutorJson, getGemmaState, loadGemmaModel } from "./gemma-engine";
 import type { ChatMessage } from "./gemma-engine";
 import type { TutorRequest, TutorResponse } from "./tutor-api";
+import type { TutorTone, VoiceGender } from "./user-store";
 
 // ── Language label helpers ───────────────────────────────────────────────────
 // Keep this tiny — the full list lives in constants. We only need readable
@@ -36,6 +37,28 @@ function labelFor(code?: string): string {
   return LANG_LABELS[code] || LANG_LABELS[code.slice(0, 2)] || code;
 }
 
+// ── Personality helpers ──────────────────────────────────────────────────────
+
+const STYLE_INSTRUCTIONS: Record<string, string> = {
+  encouraging: "Be warm and supportive. Celebrate every correct sound. Gently note errors — always end corrections with encouragement.",
+  direct: "Be clear and efficient. Give corrections immediately, no sugarcoating. The user wants the truth, not praise.",
+  socratic: "Ask guiding questions. Don't give the full answer immediately — lead the user to discover it themselves.",
+  immersive: "Conduct the session mostly in the target language. Only switch to the native language for critical corrections or when the user is truly lost.",
+};
+
+const TONE_INSTRUCTIONS: Record<string, string> = {
+  friendly: "Use casual, friendly language — contractions, natural phrases. Speak like a helpful friend.",
+  encouraging: "Use motivating, upbeat language. Cheer progress and frame corrections positively.",
+  formal: "Use polished, professional language. No slang or casual contractions. Maintain a structured teaching register.",
+};
+
+const PACE_INSTRUCTIONS: Record<string, string> = {
+  casual: "Move slowly. Repeat key points, give extra context, keep drills short (1-2 examples max).",
+  regular: "Standard pacing — one new thing per turn, medium detail.",
+  serious: "Push the pace. Introduce more vocabulary per turn. Raise the correction threshold.",
+  intensive: "Drill relentlessly. Increase complexity quickly. No padding. High correction threshold.",
+};
+
 // ── System prompt (mirror of services/tutor/system-prompt.js, trimmed) ──────
 // Keep the prompt compact to leave headroom for the user turn and JSON.
 
@@ -44,10 +67,25 @@ function buildGemmaSystemPrompt(req: TutorRequest): string {
   const native = labelFor(req.nativeLanguageCode || "en");
   const modePlaybook = MODE_PLAYBOOKS[req.mode] || MODE_PLAYBOOKS["quick-ask"];
 
+  const styleKey = req.tutorStyle ?? "encouraging";
+  const toneKey  = (req as any).tutorTone as TutorTone ?? "encouraging";
+  const paceKey  = req.commitment ?? "regular";
+  const adaptiveDifficulty: boolean = (req as any).adaptiveDifficulty ?? true;
+
+  const personalityLines: string[] = [
+    STYLE_INSTRUCTIONS[styleKey] || STYLE_INSTRUCTIONS.encouraging,
+    TONE_INSTRUCTIONS[toneKey]   || TONE_INSTRUCTIONS.encouraging,
+    PACE_INSTRUCTIONS[paceKey]   || PACE_INSTRUCTIONS.regular,
+  ];
+  if (adaptiveDifficulty) {
+    personalityLines.push("Adaptive difficulty is ON: if the user makes repeated errors, simplify the drill. If they nail it, increase complexity slightly next turn.");
+  }
+
   return [
     "You are Lang — a premium one-on-one speaking coach. You coach, you don't chat.",
     `The user speaks ${native} and is learning ${target}.`,
     req.userName ? `The user's name is ${req.userName}. When the phrase involves introductions, saying one's name, or any first-person identity, use "${req.userName}" as the name in the translation and examples.` : "",
+    `PERSONALITY: ${personalityLines.join(" ")}`,
     // Hard rule restated in two ways so a smaller model can't rationalize
     // around it. The historical bug was the model echoing the English input
     // back as the answer when target=Mandarin — that must never happen.
@@ -64,7 +102,25 @@ function buildGemmaSystemPrompt(req: TutorRequest): string {
 
 const MODE_PLAYBOOKS: Record<TutorRequest["mode"], string> = {
   "quick-ask":
-    "MODE: Quick Ask. User asked how to say or pronounce something. Fill naturalPhrase (the local-natural version), phonetic (readable to native speaker, not IPA), literalMeaning (word-for-word meaning that matches the EXACT sense used — e.g. if user says 'I love pizza' use the word for enjoying food, NOT romantic love; literalMeaning must reflect the specific word chosen), one-line context if useful, one pronunciationTip, and a concrete articulation cue. Spoken flow: how you say it, what the phrase means, say it bit by bit, now repeat. Keep it short. Leave correctionLine empty. IMPORTANT: Choose the word/form that matches the EXACT meaning and context the user intended. Never pick a generic or romantic sense when the user means something casual or specific.",
+    "MODE: Quick Ask (Mini-Lesson). User asked how to say or pronounce something." +
+    " Fill naturalPhrase (local-natural version), phonetic (readable to native speaker, not IPA), literalMeaning (word-for-word meaning matching the EXACT sense — e.g. casual enjoy not romantic love), context (one sentence explaining WHEN and WHERE a local would use this phrase — make it practical and vivid), pronunciationTip (the single most important tip — MUST include a real-life analogy from English words the user already knows, e.g. the rr in perro sounds like the tt in butter said very fast, or the u in rue sounds like the ew in few but with rounded lips)." +
+    " Fill all 4 articulation fields." +
+    " audioSegments MUST follow this lesson structure:" +
+    " Part 1: lang=nativeLang — Today we are going to learn how to say [phrase meaning]. This is really useful when [one real-life scenario, e.g. you are at a restaurant and want to call a taxi]." +
+    " Part 2: lang=nativeLang — In [targetLanguage] you would say:" +
+    " Part 3: lang=targetLang — naturalPhrase (spoken clearly)" +
+    " Part 4: lang=nativeLang — That means [literalMeaning]. A quick tip: [pronunciationTip with the real-life English analogy]. Listen one more time:" +
+    " Part 5: lang=targetLang — naturalPhrase (repeated)" +
+    " Part 6: lang=nativeLang — Now your turn. Tap the orb and try saying it!" +
+    " Leave correctionLine empty on first response. IMPORTANT: Choose the word/form that matches the EXACT meaning and context the user intended." +
+    " CORRECTION RULES (only when attemptTranscript is present):" +
+    " Compare the attemptTranscript word-by-word against naturalPhrase." +
+    " correctionLine MUST name the exact syllable or word that differs — never give generic advice." +
+    " pronunciationTip MUST reference the specific sound the user got wrong, with a real-life analogy." +
+    " If score >= 80%: name the single syllable that was off, e.g. 'Your r in carro sounded like an English r — roll it like the tt in butter.'" +
+    " If score 50-79%: identify the hardest word, slow it down, e.g. 'The word quiero has 3 syllables: kee-EH-roh. You said 2. Listen again.'" +
+    " If score < 50%: break the phrase into its first 2 words only and set fixDrill to just those words." +
+    " audioSegments for corrections: Part 1: lang=nativeLang — coaching line. Part 2: lang=targetLang — naturalPhrase at normal speed. Part 3: lang=nativeLang — 'Now try again!'",
   train:
     "MODE: Train (Structured Drill Engine). If attemptTranscript is empty: give ONE sentence task in the target language. Include naturalPhrase, phonetic, context (explain the task in native language), one pronunciationTip, articulation cue. Set repeatPrompt to the sentence the user must produce. If attemptTranscript is present: EVALUATE STRICTLY. Set correctedVersion to the correct target-language sentence. Set errorTypes array with categories from: grammar, pronunciation, tone, word-choice, structure. Each entry is a short string explaining the specific error. Set correctionLine to a 1-line explanation of the MOST important error. Set fixDrill to the exact sentence the user must repeat. Set shouldRepeat=true if ANY error exists. Only set shouldRepeat=false when the attempt is correct. Never skip error classification.",
   conversation:
@@ -108,8 +164,12 @@ function buildUserTurn(req: TutorRequest): string {
 
 // ── Response shaping ─────────────────────────────────────────────────────────
 
+// Strip Gemma chat-template special tokens that leak into generated field values.
+const GEMMA_TOKENS = /<\/?(?:start_of_turn|end_of_turn)>/g;
+
 function coerceResponse(raw: Record<string, unknown>): TutorResponse {
-  const s = (v: unknown): string => (typeof v === "string" ? v : "");
+  const s = (v: unknown): string =>
+    typeof v === "string" ? v.replace(GEMMA_TOKENS, "").trim() : "";
   const arr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
   const bool = (v: unknown): boolean => v === true;
   const art = (raw.articulation as Record<string, unknown>) || {};
@@ -183,10 +243,9 @@ export async function postTutorSessionGemma(req: TutorRequest): Promise<TutorRes
     console.log("[gemma-tutor] Model not loaded. Triggering load…");
     const ok = await loadGemmaModel();
     if (!ok) {
-      const next = getGemmaState();
-      throw new Error(
-        next.error || "Gemma model failed to initialize. Check logs for details."
-      );
+      // loadGemmaModel can return false if another load is already in progress.
+      // generateTutorJson always falls back to stub, so just continue.
+      console.warn("[gemma-tutor] loadGemmaModel returned false — stub will handle request");
     }
   }
 

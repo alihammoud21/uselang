@@ -14,6 +14,10 @@ const KEYS = {
   preferOnDevice: "lang:preferOnDevice",
   pronouns: "lang:pronouns",
   accentDialect: "lang:accentDialect",
+  tutorTone: "lang:tutorTone",
+  voiceGender: "lang:voiceGender",
+  adaptiveDifficulty: "lang:adaptiveDifficulty",
+  homeCountry: "lang:homeCountry",
 } as const;
 
 // Simple getter/setter for the "force on-device tutor" preference — lives
@@ -37,6 +41,8 @@ export async function setPreferOnDevicePref(value: boolean): Promise<void> {
 
 export type CommitmentLevel = "casual" | "regular" | "serious" | "intensive";
 export type TutorStyle = "encouraging" | "direct" | "socratic" | "immersive";
+export type TutorTone = "friendly" | "encouraging" | "formal";
+export type VoiceGender = "female" | "male" | "auto";
 
 // Goal presets — what the user picked from the onboarding step. The empty
 // string means the user onboarded before this field existed or hasn't set a
@@ -67,6 +73,10 @@ export interface UserProfile {
   trialStartDate: string | null;
   pronouns: string;
   accentDialect: string;
+  tutorTone: TutorTone;
+  voiceGender: VoiceGender;
+  adaptiveDifficulty: boolean;
+  homeCountry: string;
 }
 
 const DEFAULT_PROFILE: UserProfile = {
@@ -82,6 +92,10 @@ const DEFAULT_PROFILE: UserProfile = {
   trialStartDate: null,
   pronouns: "",
   accentDialect: "",
+  tutorTone: "encouraging",
+  voiceGender: "auto",
+  adaptiveDifficulty: true,
+  homeCountry: "",
 };
 
 export async function getUserProfile(): Promise<UserProfile> {
@@ -103,6 +117,10 @@ export async function getUserProfile(): Promise<UserProfile> {
       trialStartDate: map[KEYS.trialStartDate] || null,
       pronouns: map[KEYS.pronouns] || DEFAULT_PROFILE.pronouns,
       accentDialect: map[KEYS.accentDialect] || DEFAULT_PROFILE.accentDialect,
+      tutorTone: (map[KEYS.tutorTone] as TutorTone) || DEFAULT_PROFILE.tutorTone,
+      voiceGender: (map[KEYS.voiceGender] as VoiceGender) || DEFAULT_PROFILE.voiceGender,
+      adaptiveDifficulty: map[KEYS.adaptiveDifficulty] !== null ? map[KEYS.adaptiveDifficulty] !== "false" : DEFAULT_PROFILE.adaptiveDifficulty,
+      homeCountry: map[KEYS.homeCountry] || DEFAULT_PROFILE.homeCountry,
     };
   } catch {
     return DEFAULT_PROFILE;
@@ -125,6 +143,10 @@ export async function setUserProfile(profile: Partial<UserProfile>): Promise<voi
   }
   if (profile.pronouns !== undefined) pairs.push([KEYS.pronouns, profile.pronouns]);
   if (profile.accentDialect !== undefined) pairs.push([KEYS.accentDialect, profile.accentDialect]);
+  if (profile.tutorTone) pairs.push([KEYS.tutorTone, profile.tutorTone]);
+  if (profile.voiceGender) pairs.push([KEYS.voiceGender, profile.voiceGender]);
+  if (profile.adaptiveDifficulty !== undefined) pairs.push([KEYS.adaptiveDifficulty, String(profile.adaptiveDifficulty)]);
+  if (profile.homeCountry !== undefined) pairs.push([KEYS.homeCountry, profile.homeCountry]);
   if (pairs.length > 0) await AsyncStorage.multiSet(pairs);
 }
 

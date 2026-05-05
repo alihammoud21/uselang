@@ -200,7 +200,30 @@ export async function postTutorSession(
     await loadGemmaModel();
   }
 
-  let res = await postTutorSessionGemma({ ...body, includeAudio: false });
+  // Enrich request with persisted user profile settings so callers don't need
+  // to manually thread profile data through every screen.
+  let enrichedBody = body;
+  try {
+    const { getUserProfile } = await import("./user-store");
+    const profile = await getUserProfile();
+    enrichedBody = {
+      ...body,
+      nativeLanguageCode: body.nativeLanguageCode || profile.knownLanguages?.[0] || "en",
+      tutorStyle: body.tutorStyle || profile.tutorStyle || "encouraging",
+      commitment: body.commitment || profile.commitment || "regular",
+      userName: body.userName || profile.userName || undefined,
+      // Extra profile fields passed via (req as any) in buildGemmaSystemPrompt
+      ...({
+        tutorTone: profile.tutorTone || "encouraging",
+        adaptiveDifficulty: profile.adaptiveDifficulty ?? true,
+        voiceGender: profile.voiceGender || "auto",
+      } as any),
+    };
+  } catch {
+    // Non-fatal — proceed with original body
+  }
+
+  let res = await postTutorSessionGemma({ ...enrichedBody, includeAudio: false });
 
   // ── Repetition detection: if output == previous output, retry once ──
   const currentPhrase = (res.naturalPhrase || "").trim();

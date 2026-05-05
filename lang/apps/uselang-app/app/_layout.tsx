@@ -11,6 +11,9 @@ import { loadSession } from "@/lib/auth-client";
 import { COLORS } from "@/lib/constants";
 import { isGemmaSupported, getGemmaState, downloadAndLoadModel } from "@/lib/gemma-engine";
 import { prewarmOfflineTts } from "@/lib/offline-tts";
+import { initTtsVoiceGender } from "@/lib/tts-router";
+import { initNotifications } from "@/lib/daily-notifications";
+import { ThemeProvider } from "@/lib/theme-context";
 
 // Silence noisy dev warnings that don't affect production quality.
 LogBox.ignoreLogs([
@@ -63,7 +66,12 @@ export default function RootLayout() {
         prewarmOfflineTts(profile.learningLanguage);
         prewarmOfflineTts("en"); // also warm English for coaching segments
       }
+      // Apply persisted voice gender preference to TTS router
+      initTtsVoiceGender().catch(() => {});
     });
+    // Register notification handler as early as possible so daily
+    // reminders show even when the app is in the foreground.
+    initNotifications();
   }, []);
 
   // Auto-download Gemma model on first native launch.
@@ -103,6 +111,7 @@ export default function RootLayout() {
   }
 
   return (
+    <ThemeProvider>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
@@ -124,5 +133,6 @@ export default function RootLayout() {
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+    </ThemeProvider>
   );
 }

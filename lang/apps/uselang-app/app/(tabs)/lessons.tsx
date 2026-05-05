@@ -488,7 +488,7 @@ const S = StyleSheet.create({
   emptyBody:  { fontFamily: F.sans, fontSize: 14, color: T.muted, textAlign: "center", lineHeight: 20 },
 
   // Masthead
-  masthead: { flexDirection: "row", alignItems: "flex-start", marginBottom: 14, paddingTop: 4 },
+  masthead: { flexDirection: "row", alignItems: "flex-start", marginBottom: 14, paddingTop: 16 },
   mastTitle: { fontFamily: F.serif, fontSize: 36, fontWeight: "400", color: T.ink, letterSpacing: -0.8 },
   mastSub:   { fontFamily: F.serif, fontSize: 14, color: T.muted, marginTop: 4 },
   progressPill: {

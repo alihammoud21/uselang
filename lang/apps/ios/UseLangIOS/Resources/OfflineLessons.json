@@ -6,100 +6,679 @@
       "languageCode": "zh-CN",
       "units": [
         {
-          "id": "unit-greetings",
+          "id": "zh-unit-greetings",
           "title": "Unit 1: Greetings",
           "lessons": [
             {
-              "id": "lesson-greetings-1",
+              "id": "zh-lesson-greetings-1",
               "title": "Lesson 1: Say Hello",
               "subtitle": "Greet people, hear Mandarin, and speak your first words.",
               "exercises": [
                 {
-                  "id": "mc-hello",
+                  "id": "zh-mc-hello",
                   "type": "multipleChoice",
                   "prompt": "Hello",
                   "options": ["你好", "再见", "谢谢"],
                   "correctAnswers": ["你好"],
-                  "explanation": "你好 means hello."
+                  "explanation": "你好 (nǐ hǎo) means hello."
                 },
                 {
-                  "id": "type-nihao",
+                  "id": "zh-type-nihao",
                   "type": "typeAnswer",
-                  "prompt": "Type or write: 你好",
+                  "prompt": "Type: 你好",
                   "correctAnswers": ["ni hao", "nihao", "你好"],
-                  "explanation": "Both pinyin and characters count."
+                  "explanation": "Both pinyin and characters are accepted."
                 },
                 {
-                  "id": "listen-xiexie",
+                  "id": "zh-listen-xiexie",
                   "type": "listening",
                   "prompt": "Tap play. What does this mean?",
                   "speakText": "谢谢",
                   "options": ["Goodbye", "Thank you", "Hello"],
                   "correctAnswers": ["Thank you"],
-                  "explanation": "谢谢 means thank you."
+                  "explanation": "谢谢 (xiè xiè) means thank you."
                 },
                 {
-                  "id": "speak-zaijian",
+                  "id": "zh-speak-zaijian",
                   "type": "speak",
                   "prompt": "Say: 再见",
                   "speakText": "再见",
                   "correctAnswers": ["再见", "zai jian", "zaijian"],
-                  "explanation": "再见 means goodbye."
+                  "explanation": "再见 (zài jiàn) means goodbye."
                 },
                 {
-                  "id": "build-wohenhao",
+                  "id": "zh-build-wohenhao",
                   "type": "sentenceBuilder",
                   "prompt": "Build: I am very good",
                   "tokens": ["我", "很", "好"],
                   "correctAnswers": ["我 很 好", "我很好"],
-                  "explanation": "我很好 means I am very good."
+                  "explanation": "我很好 (wǒ hěn hǎo) means I am very good."
                 }
               ]
             },
             {
-              "id": "lesson-greetings-2",
+              "id": "zh-lesson-greetings-2",
               "title": "Lesson 2: Polite Basics",
-              "subtitle": "Practice yes, no, please, and simple replies.",
+              "subtitle": "Practice please, you're welcome, and polite replies.",
               "exercises": [
                 {
-                  "id": "mc-thanks",
+                  "id": "zh-mc-thanks2",
                   "type": "multipleChoice",
-                  "prompt": "Thank you",
-                  "options": ["不", "谢谢", "请"],
-                  "correctAnswers": ["谢谢"],
-                  "explanation": "谢谢 is thank you."
+                  "prompt": "Please",
+                  "options": ["不客气", "谢谢", "请"],
+                  "correctAnswers": ["请"],
+                  "explanation": "请 (qǐng) means please."
                 },
                 {
-                  "id": "type-qing",
+                  "id": "zh-type-bukeqi",
                   "type": "typeAnswer",
-                  "prompt": "Type or write: 请",
-                  "correctAnswers": ["qing", "请"],
-                  "explanation": "请 means please."
+                  "prompt": "Type: You're welcome",
+                  "correctAnswers": ["bu ke qi", "bukeqi", "不客气"],
+                  "explanation": "不客气 (bù kèqi) means you're welcome."
                 },
                 {
-                  "id": "listen-bu",
+                  "id": "zh-listen-bu",
                   "type": "listening",
                   "prompt": "Tap play. What does this mean?",
                   "speakText": "不",
                   "options": ["No", "Please", "Good"],
                   "correctAnswers": ["No"],
-                  "explanation": "不 means no/not."
+                  "explanation": "不 (bù) means no or not."
                 },
                 {
-                  "id": "speak-qing",
+                  "id": "zh-speak-qing",
                   "type": "speak",
                   "prompt": "Say: 请",
                   "speakText": "请",
                   "correctAnswers": ["请", "qing"],
-                  "explanation": "请 is a short, useful polite word."
+                  "explanation": "请 is a short, essential polite word."
                 },
                 {
-                  "id": "build-nihao-ma",
+                  "id": "zh-build-nihao-ma",
                   "type": "sentenceBuilder",
                   "prompt": "Build: How are you?",
                   "tokens": ["你", "好", "吗"],
                   "correctAnswers": ["你 好 吗", "你好吗"],
-                  "explanation": "你好吗 asks how someone is."
+                  "explanation": "你好吗 (nǐ hǎo ma) asks how someone is."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "zh-unit-numbers",
+          "title": "Unit 2: Numbers",
+          "lessons": [
+            {
+              "id": "zh-lesson-numbers-1",
+              "title": "Lesson 1: One to Ten",
+              "subtitle": "Count from 1–10 and hear the tones.",
+              "exercises": [
+                {
+                  "id": "zh-mc-one",
+                  "type": "multipleChoice",
+                  "prompt": "1 (one)",
+                  "options": ["二", "一", "三"],
+                  "correctAnswers": ["一"],
+                  "explanation": "一 (yī) means one."
+                },
+                {
+                  "id": "zh-listen-five",
+                  "type": "listening",
+                  "prompt": "Tap play. What number is this?",
+                  "speakText": "五",
+                  "options": ["Three", "Five", "Seven"],
+                  "correctAnswers": ["Five"],
+                  "explanation": "五 (wǔ) means five."
+                },
+                {
+                  "id": "zh-type-ten",
+                  "type": "typeAnswer",
+                  "prompt": "Type: 十",
+                  "correctAnswers": ["shi", "shí", "十"],
+                  "explanation": "十 (shí) means ten."
+                },
+                {
+                  "id": "zh-speak-san",
+                  "type": "speak",
+                  "prompt": "Say: 三",
+                  "speakText": "三",
+                  "correctAnswers": ["三", "san"],
+                  "explanation": "三 (sān) means three."
+                },
+                {
+                  "id": "zh-build-yiersan",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: One two three",
+                  "tokens": ["一", "二", "三"],
+                  "correctAnswers": ["一 二 三", "一二三"],
+                  "explanation": "一二三 = one, two, three."
+                }
+              ]
+            },
+            {
+              "id": "zh-lesson-numbers-2",
+              "title": "Lesson 2: Prices & Quantities",
+              "subtitle": "Use numbers to ask about prices and amounts.",
+              "exercises": [
+                {
+                  "id": "zh-mc-how-many",
+                  "type": "multipleChoice",
+                  "prompt": "How many?",
+                  "options": ["多少", "什么", "哪里"],
+                  "correctAnswers": ["多少"],
+                  "explanation": "多少 (duōshao) means how many or how much."
+                },
+                {
+                  "id": "zh-listen-duoshao",
+                  "type": "listening",
+                  "prompt": "What is being asked?",
+                  "speakText": "多少钱",
+                  "options": ["How much does it cost?", "Where is it?", "What is it?"],
+                  "correctAnswers": ["How much does it cost?"],
+                  "explanation": "多少钱 (duōshao qián) means how much does it cost."
+                },
+                {
+                  "id": "zh-type-price",
+                  "type": "typeAnswer",
+                  "prompt": "Type: 多少钱",
+                  "correctAnswers": ["duo shao qian", "duoshaoqian", "多少钱"],
+                  "explanation": "The full phrase for asking a price."
+                },
+                {
+                  "id": "zh-speak-liuge",
+                  "type": "speak",
+                  "prompt": "Say: 六个",
+                  "speakText": "六个",
+                  "correctAnswers": ["六个", "liu ge"],
+                  "explanation": "六个 (liù gè) means six of them."
+                },
+                {
+                  "id": "zh-build-san-ge",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: Three of them please",
+                  "tokens": ["三", "个", "请"],
+                  "correctAnswers": ["请 三 个", "请三个", "三 个 请", "三个请"],
+                  "explanation": "请三个 means please give three."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "zh-unit-food",
+          "title": "Unit 3: Food & Dining",
+          "lessons": [
+            {
+              "id": "zh-lesson-food-1",
+              "title": "Lesson 1: Ordering Food",
+              "subtitle": "Order at a restaurant and ask for what you need.",
+              "exercises": [
+                {
+                  "id": "zh-mc-water",
+                  "type": "multipleChoice",
+                  "prompt": "Water",
+                  "options": ["茶", "水", "咖啡"],
+                  "correctAnswers": ["水"],
+                  "explanation": "水 (shuǐ) means water."
+                },
+                {
+                  "id": "zh-listen-chi",
+                  "type": "listening",
+                  "prompt": "What does this mean?",
+                  "speakText": "我要吃饭",
+                  "options": ["I want to drink tea", "I want to eat rice", "I want to pay"],
+                  "correctAnswers": ["I want to eat rice"],
+                  "explanation": "我要吃饭 means I want to eat/have a meal."
+                },
+                {
+                  "id": "zh-type-menu",
+                  "type": "typeAnswer",
+                  "prompt": "Type: 菜单",
+                  "correctAnswers": ["cai dan", "caidan", "菜单"],
+                  "explanation": "菜单 (càidān) means menu."
+                },
+                {
+                  "id": "zh-speak-yao",
+                  "type": "speak",
+                  "prompt": "Say: 我要这个",
+                  "speakText": "我要这个",
+                  "correctAnswers": ["我要这个", "wo yao zhe ge"],
+                  "explanation": "我要这个 means I want this one."
+                },
+                {
+                  "id": "zh-build-mai-dan",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: Check please",
+                  "tokens": ["买", "单", "请"],
+                  "correctAnswers": ["请 买 单", "请买单"],
+                  "explanation": "请买单 means please bring the check."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "spanish-basics",
+      "title": "Spanish Basics",
+      "languageCode": "es-ES",
+      "units": [
+        {
+          "id": "es-unit-greetings",
+          "title": "Unit 1: Greetings",
+          "lessons": [
+            {
+              "id": "es-lesson-greetings-1",
+              "title": "Lesson 1: Hola!",
+              "subtitle": "Say hello, goodbye, and introduce yourself.",
+              "exercises": [
+                {
+                  "id": "es-mc-hello",
+                  "type": "multipleChoice",
+                  "prompt": "Hello",
+                  "options": ["Hola", "Adiós", "Gracias"],
+                  "correctAnswers": ["Hola"],
+                  "explanation": "Hola means hello in Spanish."
+                },
+                {
+                  "id": "es-type-adios",
+                  "type": "typeAnswer",
+                  "prompt": "Type: Goodbye",
+                  "correctAnswers": ["adios", "adiós", "Adiós"],
+                  "explanation": "Adiós means goodbye."
+                },
+                {
+                  "id": "es-listen-gracias",
+                  "type": "listening",
+                  "prompt": "Tap play. What does this mean?",
+                  "speakText": "Gracias",
+                  "options": ["Please", "Thank you", "Sorry"],
+                  "correctAnswers": ["Thank you"],
+                  "explanation": "Gracias means thank you."
+                },
+                {
+                  "id": "es-speak-hola",
+                  "type": "speak",
+                  "prompt": "Say: Hola",
+                  "speakText": "Hola",
+                  "correctAnswers": ["hola", "Hola"],
+                  "explanation": "A simple, friendly greeting."
+                },
+                {
+                  "id": "es-build-me-llamo",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: My name is...",
+                  "tokens": ["Me", "llamo", "..."],
+                  "correctAnswers": ["Me llamo ...", "Me llamo..."],
+                  "explanation": "Me llamo means my name is."
+                }
+              ]
+            },
+            {
+              "id": "es-lesson-greetings-2",
+              "title": "Lesson 2: How Are You?",
+              "subtitle": "Ask how someone is and give a reply.",
+              "exercises": [
+                {
+                  "id": "es-mc-howareyou",
+                  "type": "multipleChoice",
+                  "prompt": "How are you?",
+                  "options": ["¿Cómo estás?", "¿Dónde estás?", "¿Quién eres?"],
+                  "correctAnswers": ["¿Cómo estás?"],
+                  "explanation": "¿Cómo estás? asks how someone is doing."
+                },
+                {
+                  "id": "es-listen-bien",
+                  "type": "listening",
+                  "prompt": "What does this mean?",
+                  "speakText": "Estoy bien, gracias",
+                  "options": ["I am tired", "I am fine, thank you", "I am busy"],
+                  "correctAnswers": ["I am fine, thank you"],
+                  "explanation": "Estoy bien, gracias = I am fine, thank you."
+                },
+                {
+                  "id": "es-type-porlafavor",
+                  "type": "typeAnswer",
+                  "prompt": "Type: Please",
+                  "correctAnswers": ["por favor", "Por favor"],
+                  "explanation": "Por favor means please."
+                },
+                {
+                  "id": "es-speak-buenos",
+                  "type": "speak",
+                  "prompt": "Say: Buenos días",
+                  "speakText": "Buenos días",
+                  "correctAnswers": ["buenos dias", "buenos días", "Buenos días"],
+                  "explanation": "Buenos días means good morning."
+                },
+                {
+                  "id": "es-build-como-estas",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: How are you?",
+                  "tokens": ["¿Cómo", "estás?"],
+                  "correctAnswers": ["¿Cómo estás?"],
+                  "explanation": "Cómo estás is the informal way to ask."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "es-unit-numbers",
+          "title": "Unit 2: Numbers",
+          "lessons": [
+            {
+              "id": "es-lesson-numbers-1",
+              "title": "Lesson 1: One to Ten",
+              "subtitle": "Count from uno to diez.",
+              "exercises": [
+                {
+                  "id": "es-mc-one",
+                  "type": "multipleChoice",
+                  "prompt": "2 (two)",
+                  "options": ["uno", "dos", "tres"],
+                  "correctAnswers": ["dos"],
+                  "explanation": "Dos means two."
+                },
+                {
+                  "id": "es-listen-cinco",
+                  "type": "listening",
+                  "prompt": "What number is this?",
+                  "speakText": "cinco",
+                  "options": ["Four", "Five", "Six"],
+                  "correctAnswers": ["Five"],
+                  "explanation": "Cinco means five."
+                },
+                {
+                  "id": "es-type-ten",
+                  "type": "typeAnswer",
+                  "prompt": "Type: ten",
+                  "correctAnswers": ["diez", "Diez"],
+                  "explanation": "Diez means ten."
+                },
+                {
+                  "id": "es-speak-tres",
+                  "type": "speak",
+                  "prompt": "Say: tres",
+                  "speakText": "tres",
+                  "correctAnswers": ["tres", "Tres"],
+                  "explanation": "Tres means three."
+                },
+                {
+                  "id": "es-build-uno-dos-tres",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: One, two, three",
+                  "tokens": ["uno", "dos", "tres"],
+                  "correctAnswers": ["uno dos tres"],
+                  "explanation": "Uno, dos, tres = 1, 2, 3."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "es-unit-food",
+          "title": "Unit 3: Food & Dining",
+          "lessons": [
+            {
+              "id": "es-lesson-food-1",
+              "title": "Lesson 1: At the Restaurant",
+              "subtitle": "Order food and drinks like a local.",
+              "exercises": [
+                {
+                  "id": "es-mc-water",
+                  "type": "multipleChoice",
+                  "prompt": "Water",
+                  "options": ["vino", "agua", "café"],
+                  "correctAnswers": ["agua"],
+                  "explanation": "Agua means water."
+                },
+                {
+                  "id": "es-listen-menu",
+                  "type": "listening",
+                  "prompt": "What is being asked?",
+                  "speakText": "La carta, por favor",
+                  "options": ["The bill please", "The menu please", "The water please"],
+                  "correctAnswers": ["The menu please"],
+                  "explanation": "La carta means the menu."
+                },
+                {
+                  "id": "es-type-quiero",
+                  "type": "typeAnswer",
+                  "prompt": "Type: I want",
+                  "correctAnswers": ["quiero", "Quiero"],
+                  "explanation": "Quiero means I want."
+                },
+                {
+                  "id": "es-speak-cuenta",
+                  "type": "speak",
+                  "prompt": "Say: La cuenta, por favor",
+                  "speakText": "La cuenta, por favor",
+                  "correctAnswers": ["la cuenta por favor", "La cuenta, por favor"],
+                  "explanation": "La cuenta means the bill/check."
+                },
+                {
+                  "id": "es-build-quiero-agua",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: I want water please",
+                  "tokens": ["Quiero", "agua", "por favor"],
+                  "correctAnswers": ["Quiero agua por favor", "quiero agua por favor"],
+                  "explanation": "Quiero agua por favor = I want water please."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "french-basics",
+      "title": "French Basics",
+      "languageCode": "fr-FR",
+      "units": [
+        {
+          "id": "fr-unit-greetings",
+          "title": "Unit 1: Greetings",
+          "lessons": [
+            {
+              "id": "fr-lesson-greetings-1",
+              "title": "Lesson 1: Bonjour!",
+              "subtitle": "Say hello, thank you, and introduce yourself.",
+              "exercises": [
+                {
+                  "id": "fr-mc-hello",
+                  "type": "multipleChoice",
+                  "prompt": "Hello / Good day",
+                  "options": ["Bonjour", "Au revoir", "Merci"],
+                  "correctAnswers": ["Bonjour"],
+                  "explanation": "Bonjour means hello or good day."
+                },
+                {
+                  "id": "fr-type-merci",
+                  "type": "typeAnswer",
+                  "prompt": "Type: Thank you",
+                  "correctAnswers": ["merci", "Merci"],
+                  "explanation": "Merci means thank you."
+                },
+                {
+                  "id": "fr-listen-aurevoir",
+                  "type": "listening",
+                  "prompt": "Tap play. What does this mean?",
+                  "speakText": "Au revoir",
+                  "options": ["Hello", "Goodbye", "Thank you"],
+                  "correctAnswers": ["Goodbye"],
+                  "explanation": "Au revoir means goodbye."
+                },
+                {
+                  "id": "fr-speak-bonjour",
+                  "type": "speak",
+                  "prompt": "Say: Bonjour",
+                  "speakText": "Bonjour",
+                  "correctAnswers": ["bonjour", "Bonjour"],
+                  "explanation": "A classic French greeting."
+                },
+                {
+                  "id": "fr-build-je-mappelle",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: My name is...",
+                  "tokens": ["Je", "m'appelle", "..."],
+                  "correctAnswers": ["Je m'appelle ...", "Je m'appelle..."],
+                  "explanation": "Je m'appelle means my name is."
+                }
+              ]
+            },
+            {
+              "id": "fr-lesson-greetings-2",
+              "title": "Lesson 2: Comment Allez-Vous?",
+              "subtitle": "Ask how someone is and respond politely.",
+              "exercises": [
+                {
+                  "id": "fr-mc-howareyou",
+                  "type": "multipleChoice",
+                  "prompt": "How are you? (formal)",
+                  "options": ["Comment allez-vous?", "Où êtes-vous?", "Qui êtes-vous?"],
+                  "correctAnswers": ["Comment allez-vous?"],
+                  "explanation": "Comment allez-vous is the formal way to ask."
+                },
+                {
+                  "id": "fr-listen-bien",
+                  "type": "listening",
+                  "prompt": "What does this mean?",
+                  "speakText": "Je vais bien, merci",
+                  "options": ["I am tired", "I am fine, thank you", "I am hungry"],
+                  "correctAnswers": ["I am fine, thank you"],
+                  "explanation": "Je vais bien, merci = I am fine, thank you."
+                },
+                {
+                  "id": "fr-type-silteplait",
+                  "type": "typeAnswer",
+                  "prompt": "Type: Please (informal)",
+                  "correctAnswers": ["s'il te plait", "s'il te plaît", "sil te plait"],
+                  "explanation": "S'il te plaît means please (informal)."
+                },
+                {
+                  "id": "fr-speak-bonsoir",
+                  "type": "speak",
+                  "prompt": "Say: Bonsoir",
+                  "speakText": "Bonsoir",
+                  "correctAnswers": ["bonsoir", "Bonsoir"],
+                  "explanation": "Bonsoir means good evening."
+                },
+                {
+                  "id": "fr-build-comment-tv",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: How are you? (informal)",
+                  "tokens": ["Comment", "tu", "vas?"],
+                  "correctAnswers": ["Comment tu vas?"],
+                  "explanation": "Comment tu vas is the informal way to ask."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "fr-unit-numbers",
+          "title": "Unit 2: Numbers",
+          "lessons": [
+            {
+              "id": "fr-lesson-numbers-1",
+              "title": "Lesson 1: Un à Dix",
+              "subtitle": "Count from one to ten in French.",
+              "exercises": [
+                {
+                  "id": "fr-mc-two",
+                  "type": "multipleChoice",
+                  "prompt": "2 (two)",
+                  "options": ["un", "deux", "trois"],
+                  "correctAnswers": ["deux"],
+                  "explanation": "Deux means two."
+                },
+                {
+                  "id": "fr-listen-cinq",
+                  "type": "listening",
+                  "prompt": "What number is this?",
+                  "speakText": "cinq",
+                  "options": ["Four", "Five", "Six"],
+                  "correctAnswers": ["Five"],
+                  "explanation": "Cinq means five."
+                },
+                {
+                  "id": "fr-type-dix",
+                  "type": "typeAnswer",
+                  "prompt": "Type: ten",
+                  "correctAnswers": ["dix", "Dix"],
+                  "explanation": "Dix means ten."
+                },
+                {
+                  "id": "fr-speak-trois",
+                  "type": "speak",
+                  "prompt": "Say: trois",
+                  "speakText": "trois",
+                  "correctAnswers": ["trois", "Trois"],
+                  "explanation": "Trois means three."
+                },
+                {
+                  "id": "fr-build-un-deux-trois",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: One, two, three",
+                  "tokens": ["un", "deux", "trois"],
+                  "correctAnswers": ["un deux trois"],
+                  "explanation": "Un, deux, trois = 1, 2, 3."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "fr-unit-food",
+          "title": "Unit 3: Food & Dining",
+          "lessons": [
+            {
+              "id": "fr-lesson-food-1",
+              "title": "Lesson 1: Au Restaurant",
+              "subtitle": "Order food and ask for the check in French.",
+              "exercises": [
+                {
+                  "id": "fr-mc-water",
+                  "type": "multipleChoice",
+                  "prompt": "Water",
+                  "options": ["vin", "eau", "café"],
+                  "correctAnswers": ["eau"],
+                  "explanation": "Eau means water."
+                },
+                {
+                  "id": "fr-listen-addition",
+                  "type": "listening",
+                  "prompt": "What is being requested?",
+                  "speakText": "L'addition, s'il vous plaît",
+                  "options": ["The menu please", "The bill please", "More water please"],
+                  "correctAnswers": ["The bill please"],
+                  "explanation": "L'addition means the bill."
+                },
+                {
+                  "id": "fr-type-jeveux",
+                  "type": "typeAnswer",
+                  "prompt": "Type: I want / I would like",
+                  "correctAnswers": ["je voudrais", "Je voudrais", "je veux", "Je veux"],
+                  "explanation": "Je voudrais is polite for I would like."
+                },
+                {
+                  "id": "fr-speak-lacarte",
+                  "type": "speak",
+                  "prompt": "Say: La carte, s'il vous plaît",
+                  "speakText": "La carte, s'il vous plaît",
+                  "correctAnswers": ["la carte sil vous plait", "La carte, s'il vous plaît"],
+                  "explanation": "La carte means the menu."
+                },
+                {
+                  "id": "fr-build-je-voudrais-eau",
+                  "type": "sentenceBuilder",
+                  "prompt": "Build: I would like water please",
+                  "tokens": ["Je", "voudrais", "de l'eau", "s'il vous plaît"],
+                  "correctAnswers": ["Je voudrais de l'eau s'il vous plaît"],
+                  "explanation": "Je voudrais de l'eau = I would like some water."
                 }
               ]
             }

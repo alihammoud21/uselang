@@ -35,7 +35,7 @@ function FadeSlide({ children, style }: { children: React.ReactNode; style?: any
 
 // ── Progress dots ─────────────────────────────────────────────────────────────
 
-const TOTAL_STEPS = 9;
+const TOTAL_STEPS = 11;
 function ProgressDots({ current }: { current: number }) {
   return (
     <View style={{ flexDirection: "row", gap: 6, justifyContent: "center", marginBottom: 8 }}>
@@ -188,8 +188,8 @@ function GoalCard({
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-type StepId = "welcome" | "known" | "globe" | "learn" | "commitment" | "style" | "goal" | "account" | "trial";
-const STEP_ORDER: StepId[] = ["welcome", "known", "globe", "learn", "commitment", "style", "goal", "account", "trial"];
+type StepId = "welcome" | "name" | "country" | "known" | "globe" | "learn" | "commitment" | "style" | "goal" | "account" | "trial";
+const STEP_ORDER: StepId[] = ["welcome", "name", "country", "known", "globe", "learn", "commitment", "style", "goal", "account", "trial"];
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -197,6 +197,8 @@ export default function OnboardingScreen() {
   const [knownLanguages, setKnownLanguages] = useState<string[]>(["en"]);
   const [learningLanguage, setLearningLanguage] = useState<string>("");
 
+  const [userName, setUserName] = useState("");
+  const [homeCountry, setHomeCountry] = useState("");
   const [commitment, setCommitment] = useState<CommitmentLevel>("regular");
   const [tutorStyle, setTutorStyle] = useState<TutorStyle>("encouraging");
   const [goalPreset, setGoalPreset] = useState<GoalPreset>("travel");
@@ -234,6 +236,8 @@ export default function OnboardingScreen() {
   const profilePayload = {
     knownLanguages,
     learningLanguage,
+    userName: userName.trim(),
+    homeCountry: homeCountry.trim(),
     commitment,
     tutorStyle,
     scenario: resolvedScenario,
@@ -334,6 +338,85 @@ export default function OnboardingScreen() {
               Account optional · saves on this phone
             </Text>
           </View>
+        </FadeSlide>
+      )}
+
+      {/* ── NAME ───────────────────────────────────────────────────────────────── */}
+      {step === "name" && (
+        <FadeSlide key="name" style={{ paddingHorizontal: 22 }}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }} keyboardVerticalOffset={24}>
+            <Text style={{ fontSize: 26, fontWeight: "800", color: COLORS.text,
+              letterSpacing: -0.8, marginBottom: 6, marginTop: 12 }}>
+              What should we call you?
+            </Text>
+            <Text style={{ fontSize: 14, color: COLORS.textSub, lineHeight: 21, marginBottom: 24 }}>
+              Your tutor will use your name to make sessions feel personal.
+            </Text>
+            <TextInput
+              value={userName}
+              onChangeText={setUserName}
+              autoFocus
+              autoCapitalize="words"
+              autoCorrect={false}
+              textContentType="givenName"
+              placeholder="First name or nickname"
+              placeholderTextColor={COLORS.textMuted}
+              returnKeyType="next"
+              onSubmitEditing={advance}
+              style={{
+                height: 56, borderRadius: 18,
+                backgroundColor: COLORS.surface,
+                paddingHorizontal: 18, fontSize: 17,
+                color: COLORS.text, fontWeight: "600",
+                borderWidth: 1, borderColor: COLORS.border,
+              }}
+            />
+            <View style={{ position: "absolute", bottom: 24, left: 0, right: 0 }}>
+              <CTAButton label="Continue" onPress={advance} />
+              <Pressable onPress={advance} hitSlop={10} style={{ alignItems: "center", marginTop: 14 }}>
+                <Text style={{ fontSize: 14, color: COLORS.textMuted, fontWeight: "600" }}>Skip</Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </FadeSlide>
+      )}
+
+      {/* ── COUNTRY ─────────────────────────────────────────────────────────── */}
+      {step === "country" && (
+        <FadeSlide key="country" style={{ paddingHorizontal: 22 }}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }} keyboardVerticalOffset={24}>
+            <Text style={{ fontSize: 26, fontWeight: "800", color: COLORS.text,
+              letterSpacing: -0.8, marginBottom: 6, marginTop: 12 }}>
+              Where are you from?
+            </Text>
+            <Text style={{ fontSize: 14, color: COLORS.textSub, lineHeight: 21, marginBottom: 24 }}>
+              Helps us tailor accents and cultural context to feel natural to you.
+            </Text>
+            <TextInput
+              value={homeCountry}
+              onChangeText={setHomeCountry}
+              autoFocus
+              autoCapitalize="words"
+              autoCorrect={false}
+              placeholder="Your country or city"
+              placeholderTextColor={COLORS.textMuted}
+              returnKeyType="next"
+              onSubmitEditing={advance}
+              style={{
+                height: 56, borderRadius: 18,
+                backgroundColor: COLORS.surface,
+                paddingHorizontal: 18, fontSize: 17,
+                color: COLORS.text, fontWeight: "600",
+                borderWidth: 1, borderColor: COLORS.border,
+              }}
+            />
+            <View style={{ position: "absolute", bottom: 24, left: 0, right: 0 }}>
+              <CTAButton label="Continue" onPress={advance} />
+              <Pressable onPress={advance} hitSlop={10} style={{ alignItems: "center", marginTop: 14 }}>
+                <Text style={{ fontSize: 14, color: COLORS.textMuted, fontWeight: "600" }}>Skip</Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
         </FadeSlide>
       )}
 
@@ -699,6 +782,8 @@ export default function OnboardingScreen() {
               <Text style={{ fontSize: 13, fontWeight: "700", color: COLORS.textMuted,
                 letterSpacing: 0.8, marginBottom: 16 }}>YOUR SETUP</Text>
               {[
+                ...(userName.trim() ? [{ label: "Name", value: userName.trim() }] : []),
+                ...(homeCountry.trim() ? [{ label: "From", value: homeCountry.trim() }] : []),
                 { label: "Learning", value: SUPPORTED_LANGUAGES.find((l) => l.code === learningLanguage)?.label ?? "—" },
                 { label: "Known", value: knownLanguages.map((c) => c.toUpperCase()).join(", ") },
                 { label: "Commitment", value: commitment.charAt(0).toUpperCase() + commitment.slice(1) },

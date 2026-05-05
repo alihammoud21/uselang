@@ -13,6 +13,7 @@ class OfflineVoiceModule: RCTEventEmitter, AVSpeechSynthesizerDelegate {
   private var activeResolve: RCTPromiseResolveBlock?
   private var activeReject: RCTPromiseRejectBlock?
   private var shouldResumeListeningAfterInterruption = false
+  private var speechStartedAt: Date?
 
   override init() {
     super.init()
@@ -143,6 +144,7 @@ class OfflineVoiceModule: RCTEventEmitter, AVSpeechSynthesizerDelegate {
       }
 
       // Small delay to let the audio session settle after mode switch
+      self.speechStartedAt = Date()
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
         self.startRecognitionAfterSetup(recognizer: recognizer, localeIdentifier: localeIdentifier, requiresOnDevice: requiresOnDevice, resolve: resolve, reject: reject)
       }
@@ -382,6 +384,21 @@ class OfflineVoiceModule: RCTEventEmitter, AVSpeechSynthesizerDelegate {
     let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
     NSLog("[OfflineVoiceModule] route change reason=%lu route=%@", reasonValue, currentRouteDescription())
     DispatchQueue.main.async {
+      // Ignore self-inflicted route changes triggered by our own audio session
+      // configuration. .categoryChange and .routeConfigurationChange fire the
+      // moment we call setCategory/setActive or audioEngine.start() — killing
+      // the session we just started. Only true hardware events (headphones
+      // plugged/unplugged, Bluetooth connect) should interrupt recognition.
+      if reason == .categoryChange || reason == .routeConfigurationChange || reason == .override {
+        NSLog("[OfflineVoiceModule] route change ignored (self-inflicted reason=%lu)", reasonValue)
+        return
+      }
+      // Also ignore any route change that fires within 700 ms of session start
+      // (covers USB host audio takeover on Mac-connected devices).
+      if let startedAt = self.speechStartedAt, Date().timeIntervalSince(startedAt) < 0.70 {
+        NSLog("[OfflineVoiceModule] route change ignored (startup grace window, reason=%lu)", reasonValue)
+        return
+      }
       let wasListening = self.audioEngine.isRunning
       if wasListening {
         self.stopSpeechInternal(sendEnd: true)

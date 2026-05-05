@@ -1,5 +1,6 @@
 const { getDefaultConfig } = require("expo/metro-config");
 const { withNativeWind } = require("nativewind/metro");
+const path = require("path");
 
 const config = getDefaultConfig(__dirname);
 
@@ -8,5 +9,28 @@ config.resolver.assetExts = Array.from(new Set([
   "pte",
   "gemmajson",
 ]));
+
+// ── Web-compat resolver ───────────────────────────────────────────────────────
+// react-native 0.79 added internal modules (BaseViewConfig, PlatformBaseViewConfig,
+// etc.) that react-native-web 0.20 doesn't yet provide stubs for.
+// When a web-platform build encounters an unresolvable import that originates
+// INSIDE the react-native package itself, redirect it to an empty stub rather
+// than crashing the entire bundle.
+const RN_WEB_STUB = path.resolve(__dirname, "shims/RNWebStub.js");
+
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  try {
+    return context.resolveRequest(context, moduleName, platform);
+  } catch (err) {
+    const isWebBuild = platform === "web";
+    const fromRNInternal = context.originModulePath?.includes("/node_modules/react-native/");
+    if (isWebBuild && fromRNInternal) {
+      // Silently stub — these modules are native-renderer internals that are
+      // never called at runtime in a web/WKWebView context.
+      return { filePath: RN_WEB_STUB, type: "sourceFile" };
+    }
+    throw err;
+  }
+};
 
 module.exports = withNativeWind(config, { input: "./src/styles/global.css" });

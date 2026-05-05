@@ -125,6 +125,10 @@ export function supportsOnDeviceSpeech(): boolean {
 }
 
 export async function ensureNativeSpeechPermission(requiresOnDevice = true): Promise<void> {
+  // On web (WKWebView), the Web Speech API handles its own permission dialog
+  // when recognition.start() is called — nothing to do here.
+  if (Platform.OS === "web") return;
+
   // On iOS we have a custom Swift bridge (OfflineVoiceModule) that owns the
   // SFSpeechRecognizer authorization flow. Use it FIRST so devices that ship
   // without expo-speech-recognition's JS module (e.g. some dev builds) still
@@ -323,12 +327,71 @@ export async function getNativeSpeechReadinessStatus(languageCode: string): Prom
   };
 }
 
+// ── Web Speech API fallback (WKWebView / web platform) ───────────────────────
+// When the Expo bundle runs inside a WKWebView, Platform.OS === "web" and the
+// native modules (expo-speech-recognition, OfflineVoiceModule) are unreachable.
+// The Web Speech API (SpeechRecognition / webkitSpeechRecognition) IS available
+// in WKWebView on iOS 16+ and gives us microphone access + transcription.
+function startWebSpeechSession(options: NativeSpeechOptions): NativeSpeechSession | null {
+  if (typeof window === "undefined") return null;
+  const SpeechRecognitionCtor: any =
+    (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  if (!SpeechRecognitionCtor) return null;
+
+  const locale = speechLocaleFor(options.languageCode || options.fallbackLanguageCode || "en");
+  const recognition = new SpeechRecognitionCtor();
+  recognition.lang = locale;
+  recognition.continuous = options.continuous ?? false;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onresult = (event: any) => {
+    const results: SpeechRecognitionResultList = event.results;
+    const last = results[results.length - 1];
+    const text: string = last[0]?.transcript?.trim() || "";
+    const isFinal: boolean = !!last.isFinal;
+    if (text) options.onResult(text, isFinal);
+  };
+  recognition.onerror = (event: any) => {
+    if (event.error === "aborted") return;
+    options.onError?.(event.message || event.error || "Speech recognition failed.");
+  };
+  recognition.onend = () => {
+    options.onEnd?.();
+  };
+
+  try {
+    recognition.start();
+    dlog("[web-speech] started, lang=", locale);
+  } catch (e) {
+    dlog("[web-speech] start() threw:", (e as Error)?.message);
+    return null;
+  }
+
+  return {
+    stop()  { try { recognition.stop();  } catch {} },
+    abort() { try { recognition.abort(); } catch {} },
+  };
+}
+
 export async function startNativeSpeechSession(options: NativeSpeechOptions): Promise<NativeSpeechSession> {
   const module = getSpeechModule();
   const requiresOnDevice = options.requiresOnDevice !== false;
   const locale = speechLocaleFor(options.languageCode || options.fallbackLanguageCode || "en");
   const native = getOfflineVoiceModule();
   const emitter = getOfflineVoiceEventEmitter();
+
+  // Web platform (WKWebView) — fall back to browser Web Speech API
+  if (Platform.OS === "web") {
+    dlog("web platform detected — trying Web Speech API for locale:", locale);
+    const session = startWebSpeechSession(options);
+    if (session) return session;
+    throw new SpeechPermissionError(
+      "Microphone access is needed to practice speaking. Make sure mic permission is granted for this app.",
+      false,
+    );
+  }
+
   if (Platform.OS === "ios" && native?.startSpeech && emitter) {
     dlog("native iOS session start:", { locale, requiresOnDevice });
     const listeners: Array<{ remove: () => void } | undefined> = [];

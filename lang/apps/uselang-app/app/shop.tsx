@@ -14,6 +14,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getCoinBalance, spendCoins, addCoins } from "@/lib/challenge-store";
 import { getProgressSummary, getLevel } from "@/lib/progress-store";
+import { useAppTheme } from "@/lib/theme-context";
 import {
   SHOP_CATALOG,
   purchaseItem,
@@ -54,6 +55,7 @@ const CATEGORY_LABELS: Record<ItemCategory | "all", string> = {
 
 export default function ShopScreen() {
   const router = useRouter();
+  const { setTheme: setContextTheme } = useAppTheme();
   const [coins, setCoins] = useState(0);
   const [level, setLevel] = useState(1);
   const [filter, setFilter] = useState<ItemCategory | "all">("all");
@@ -118,6 +120,9 @@ export default function ShopScreen() {
               Alert.alert("Error", err);
               return;
             }
+            // Apply theme immediately via ThemeContext
+            if (item.id === "dark_theme") setContextTheme("midnight").catch(() => {});
+            if (item.id === "sand_theme") setContextTheme("dune").catch(() => {});
             setCoins(result.balance);
             await load(); // refresh inventory + effects
             const successMsg = (() => {

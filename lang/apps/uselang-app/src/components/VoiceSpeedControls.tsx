@@ -8,14 +8,16 @@ import { Pressable, Text, View, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS } from "@/lib/constants";
 
-export type VoiceRate = 0.75 | 1.0 | 1.25 | 1.5;
+export type VoiceRate = 0.6 | 0.75 | 1.0 | 1.25 | 1.5;
 
-const RATE_STEPS: Array<{ rate: VoiceRate; label: string }> = [
+const RATE_STEPS_BASE: Array<{ rate: VoiceRate; label: string }> = [
   { rate: 0.75, label: "0.75×" },
   { rate: 1.0,  label: "1×" },
   { rate: 1.25, label: "1.25×" },
   { rate: 1.5,  label: "1.5×" },
 ];
+
+const SLOW_SPEED_STEP: { rate: VoiceRate; label: string } = { rate: 0.6, label: "0.6×" };
 
 interface Props {
   rate: VoiceRate;
@@ -25,6 +27,7 @@ interface Props {
   onRepeatNative?: () => void;
   onCompareMyVoice?: () => void;
   hasUserAudio?: boolean;
+  showSlowSpeed?: boolean;
 }
 
 export function VoiceSpeedControls({
@@ -35,14 +38,19 @@ export function VoiceSpeedControls({
   onRepeatNative,
   onCompareMyVoice,
   hasUserAudio,
+  showSlowSpeed,
 }: Props) {
+  const rateSteps = showSlowSpeed
+    ? [SLOW_SPEED_STEP, ...RATE_STEPS_BASE]
+    : RATE_STEPS_BASE;
+
   return (
     <View style={styles.wrap}>
       {/* Rate picker */}
       <View style={styles.rateRow}>
-        <Text style={styles.rateLabel}>Voice speed</Text>
+        <Text style={styles.rateLabel}>Voice speed{showSlowSpeed ? " ★" : ""}</Text>
         <View style={styles.rateSegment}>
-          {RATE_STEPS.map((step) => {
+          {rateSteps.map((step) => {
             const active = Math.abs(step.rate - rate) < 0.01;
             return (
               <Pressable

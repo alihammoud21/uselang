@@ -170,17 +170,17 @@ final class OfflineSpeechService: NSObject, ObservableObject, AVSpeechSynthesize
         synthesizer.delegate = self
     }
 
-    var hasMandarinVoice: Bool {
-        AVSpeechSynthesisVoice(language: "zh-CN") != nil
+    func hasVoice(for language: String) -> Bool {
+        AVSpeechSynthesisVoice(language: language) != nil
     }
 
-    var supportsMandarinSpeech: Bool {
-        SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))?.supportsOnDeviceRecognition == true
+    func supportsSpeech(for language: String) -> Bool {
+        SFSpeechRecognizer(locale: Locale(identifier: language))?.supportsOnDeviceRecognition == true
     }
 
-    func speakMandarin(_ text: String) {
+    func speak(_ text: String, language: String = "zh-CN") {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, let voice = AVSpeechSynthesisVoice(language: "zh-CN") else { return }
+        guard !clean.isEmpty, let voice = AVSpeechSynthesisVoice(language: language) else { return }
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
@@ -190,7 +190,7 @@ final class OfflineSpeechService: NSObject, ObservableObject, AVSpeechSynthesize
         synthesizer.speak(utterance)
     }
 
-    func recognizeMandarinOnce() async -> String {
+    func recognizeOnce(language: String = "zh-CN") async -> String {
         await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { [weak self] status in
                 guard status == .authorized else {
@@ -198,13 +198,19 @@ final class OfflineSpeechService: NSObject, ObservableObject, AVSpeechSynthesize
                     return
                 }
                 Task { @MainActor in
-                    self?.startRecognition { text in
+                    self?.startRecognition(language: language) { text in
                         continuation.resume(returning: text)
                     }
                 }
             }
         }
     }
+
+    // Convenience wrappers kept for backward compatibility
+    var hasMandarinVoice: Bool { hasVoice(for: "zh-CN") }
+    var supportsMandarinSpeech: Bool { supportsSpeech(for: "zh-CN") }
+    func speakMandarin(_ text: String) { speak(text, language: "zh-CN") }
+    func recognizeMandarinOnce() async -> String { await recognizeOnce(language: "zh-CN") }
 
     func stopRecognition() {
         if audioEngine.isRunning {
@@ -218,12 +224,12 @@ final class OfflineSpeechService: NSObject, ObservableObject, AVSpeechSynthesize
         finishRecognition = nil
     }
 
-    private func startRecognition(completion: @escaping (String) -> Void) {
+    private func startRecognition(language: String = "zh-CN", completion: @escaping (String) -> Void) {
         stopRecognition()
         transcript = ""
         finishRecognition = completion
 
-        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN")), recognizer.supportsOnDeviceRecognition else {
+        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: language)), recognizer.supportsOnDeviceRecognition else {
             completion("")
             return
         }

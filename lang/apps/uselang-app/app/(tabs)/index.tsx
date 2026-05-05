@@ -12,6 +12,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SUPPORTED_LANGUAGES } from "@/lib/constants";
+import { useAppTheme } from "@/lib/theme-context";
 import { getCurriculum } from "@/data/lessons";
 import { getTodayTwister, type TongueTwister } from "@/lib/daily-challenge";
 import { getLanguageProgress, isLessonUnlocked } from "@/lib/lesson-store";
@@ -101,6 +102,9 @@ export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: _SW } = useWindowDimensions();
+  const { theme } = useAppTheme();
+  // Override key design tokens with the active theme
+  const TC = { ...C, paper: theme.bg, card: theme.card, ink: theme.ink, muted: theme.muted } as typeof C;
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [summary, setSummary] = useState<ProgressSummary | null>(null);
@@ -178,11 +182,11 @@ export default function HomeScreen() {
   ];
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.paper }} edges={["top"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: TC.paper }} edges={["top"]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}>
 
         {/* ══ MASTHEAD ══ */}
-        <View style={[S.px, { paddingTop: 20, paddingBottom: 4 }]}>
+        <View style={[S.px, { paddingTop: 34, paddingBottom: 4 }]}>
           <View style={S.mastheadBar}>
             <Text style={S.greetText}>{greeting()}{firstName ? `, ${firstName}` : ""}</Text>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>

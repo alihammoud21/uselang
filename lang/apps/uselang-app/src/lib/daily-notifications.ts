@@ -49,17 +49,21 @@ function ensureChannel() {
 }
 
 // ── Configure foreground behavior ───────────────────────────────────────────
+// Call initNotifications() from the root _layout to register the handler
+// before the first notification can arrive.
 
-if (Notifications) {
+export function initNotifications(): void {
+  if (!Notifications) return;
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowAlert: false,
-      shouldPlaySound: false,
+      shouldShowAlert: true,
+      shouldPlaySound: true,
       shouldSetBadge: false,
-      shouldShowBanner: false,
-      shouldShowList: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
     }),
   });
+  ensureChannel();
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -117,4 +121,37 @@ export async function getDailyNotificationHour(): Promise<number | null> {
   if (val == null) return null;
   const n = parseInt(val, 10);
   return isNaN(n) ? null : n;
+}
+
+/**
+ * Schedule a one-time review reminder for a phrase the user just mastered.
+ * Fires after `delayMinutes` (default 60) to prompt spaced-repetition review.
+ * Safe no-op if notifications unavailable or permissions not granted.
+ */
+export async function scheduleReviewReminder(
+  phrase: string,
+  delayMinutes: number = 60,
+): Promise<boolean> {
+  if (!Notifications) return false;
+  const granted = await ensurePermissions();
+  if (!granted) return false;
+  ensureChannel();
+
+  const short = phrase.length > 40 ? phrase.slice(0, 37) + "…" : phrase;
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: `lang-review-${Date.now()}`,
+    content: {
+      title: "Time to review!",
+      body: `Can you still say "${short}"? Tap to practice.`,
+      sound: "default",
+      ...(Platform.OS === "android" ? { channelId: CHANNEL_ID } : {}),
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? "timeInterval",
+      seconds: delayMinutes * 60,
+      repeats: false,
+    },
+  });
+  return true;
 }

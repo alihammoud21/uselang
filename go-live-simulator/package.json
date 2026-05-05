@@ -1,0 +1,68 @@
+{
+  "name": "go-live-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local-only fake livestream desktop game built with Electron and React.",
+  "author": "Go Live Simulator",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "typecheck": "tsc --noEmit",
+    "build": "electron-vite build",
+    "package": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "package:mac": "npm run build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg",
+    "package:win": "npm run build && electron-builder --win nsis",
+    "package:linux": "npm run build && electron-builder --linux AppImage deb"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron-vite": "^2.3.0",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11"
+  },
+  "build": {
+    "appId": "com.golivesimulator.game",
+    "productName": "Go Live Simulator",
+    "files": [
+      "out/**/*",
+      "dist/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "identity": null,
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.games"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Game"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

@@ -27,7 +27,8 @@ import Animated, {
   interpolate,
 } from "react-native-reanimated";
 import Svg, { Circle, Defs, RadialGradient, Stop, Ellipse, LinearGradient as SvgLinearGradient, Rect } from "react-native-svg";
-import { SphereOrb } from "@/components/SphereOrb";
+import { SphereOrb, type SphereOrbTone } from "@/components/SphereOrb";
+import { getActiveOrb, hasPack } from "@/lib/shop-store";
 import {
   COLORS,
   SUPPORTED_LANGUAGES,
@@ -69,7 +70,7 @@ import {
   type PhraseSession,
   type PhrasePhase,
 } from "@/lib/tutor-engine";
-import { comparePronunciation, type PronunciationFeedback } from "@/lib/pronunciation-feedback";
+import { comparePronunciation, type PronunciationFeedback, type WordMatch } from "@/lib/pronunciation-feedback";
 import { saveHomework } from "@/lib/homework-store";
 import { playTutorAudio, playUserAudio, stopTutorAudio, setTutorPlaybackRate } from "@/lib/tutor-audio";
 import { speakRoutedText, stopRoutedTts, prefetchDeepgramTts } from "@/lib/tts-router";
@@ -90,6 +91,7 @@ import { getTodayTwister, recordDrillAttempt } from "@/lib/daily-challenge";
 import { addTutorSeconds } from "@/lib/usage-store";
 import { recordMasteryAttempt } from "@/lib/mastery-store";
 import { validateUserText } from "@/lib/input-validate";
+import { scheduleReviewReminder } from "@/lib/daily-notifications";
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
@@ -471,11 +473,56 @@ function CompletionOverlay({
             </>
           )}
         </View>
-        {phraseSession.finalScore != null && (
-          <Text style={{ fontFamily: "Geist-Regular", fontSize: 13, color: "rgba(28,23,20,0.45)", marginBottom: 16 }}>
-            Full sentence score: {Math.round(phraseSession.finalScore * 100)}%
-          </Text>
-        )}
+        {/* Chunk stats summary */}
+        <View style={{
+          width: "100%", backgroundColor: "rgba(122,74,34,0.04)",
+          borderRadius: 14, padding: 14, marginBottom: 16,
+        }}>
+          <Text style={{ fontFamily: "Geist-SemiBold", fontSize: 10, color: "#7A4A22", letterSpacing: 1.2, marginBottom: 10 }}>SESSION STATS</Text>
+          <View style={{ flexDirection: "row", justifyContent: "space-around" }}>
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ fontFamily: "Geist-Bold", fontSize: 22, color: "#1C1714" }}>{phraseSession.chunks.length}</Text>
+              <Text style={{ fontFamily: "Geist-Regular", fontSize: 11, color: "rgba(28,23,20,0.45)" }}>Chunks</Text>
+            </View>
+            <View style={{ width: 1, backgroundColor: "rgba(122,74,34,0.10)" }} />
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ fontFamily: "Geist-Bold", fontSize: 22, color: "#1C1714" }}>
+                {phraseSession.finalScore != null ? `${Math.round(phraseSession.finalScore * 100)}%` : "—"}
+              </Text>
+              <Text style={{ fontFamily: "Geist-Regular", fontSize: 11, color: "rgba(28,23,20,0.45)" }}>Final Score</Text>
+            </View>
+            <View style={{ width: 1, backgroundColor: "rgba(122,74,34,0.10)" }} />
+            <View style={{ alignItems: "center" }}>
+              <Text style={{ fontFamily: "Geist-Bold", fontSize: 22, color: "#22C55E" }}>
+                {phraseSession.chunkMastered.filter(Boolean).length}/{phraseSession.chunks.length}
+              </Text>
+              <Text style={{ fontFamily: "Geist-Regular", fontSize: 11, color: "rgba(28,23,20,0.45)" }}>Mastered</Text>
+            </View>
+          </View>
+          {/* Per-chunk score bars */}
+          <View style={{ marginTop: 12, gap: 6 }}>
+            {phraseSession.chunks.map((ch, i) => {
+              const score = phraseSession.chunkScores[i] ?? 0;
+              const pct = Math.round(score * 100);
+              return (
+                <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <Text style={{ fontFamily: "Geist-Medium", fontSize: 11, color: "rgba(28,23,20,0.50)", width: 50 }} numberOfLines={1}>
+                    {ch.english || ch.target}
+                  </Text>
+                  <View style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: "rgba(122,74,34,0.08)", overflow: "hidden" }}>
+                    <View style={{
+                      width: `${pct}%`, height: 5, borderRadius: 3,
+                      backgroundColor: pct >= 80 ? "#22C55E" : pct >= 50 ? "#A85D2E" : "#EF4444",
+                    }} />
+                  </View>
+                  <Text style={{ fontFamily: "Geist-Bold", fontSize: 10, color: "rgba(28,23,20,0.40)", width: 30, textAlign: "right" }}>
+                    {pct}%
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
         {xpEarned > 0 && (
           <View style={{
             flexDirection: "row", alignItems: "center", gap: 8,
@@ -488,6 +535,22 @@ function CompletionOverlay({
             <Text style={{ fontFamily: "Geist-Regular", fontSize: 12, color: "#8A7060" }}>XP earned</Text>
           </View>
         )}
+        {/* Review reminder */}
+        <Pressable
+          onPress={() => {
+            scheduleReviewReminder(phraseSession.fullTarget, 60).catch(() => {});
+            Alert.alert("Reminder set!", "We'll remind you to review this phrase in 1 hour.");
+          }}
+          style={({ pressed }) => ({
+            flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+            backgroundColor: "rgba(34,197,94,0.08)", borderWidth: 1, borderColor: "rgba(34,197,94,0.20)",
+            borderRadius: 99, paddingVertical: 11, paddingHorizontal: 20, width: "100%",
+            marginBottom: 10, opacity: pressed ? 0.8 : 1,
+          })}
+        >
+          <Ionicons name="notifications-outline" size={15} color="#1A7A3C" />
+          <Text style={{ fontFamily: "Geist-Bold", fontSize: 13, color: "#1A7A3C" }}>Review in 1 hour</Text>
+        </Pressable>
         <Pressable
           onPress={onDismiss}
           style={({ pressed }) => ({
@@ -763,9 +826,27 @@ export default function TrainScreen() {
   const [voiceRate, setVoiceRate] = useState<VoiceRate>(1.0);
   const [quickReady, setQuickReady] = useState(true); // always ready — speech stays on-device
   const [isTypingFocused, setIsTypingFocused] = useState(false);
+  const [wordLimitError, setWordLimitError] = useState(false);
+  const wordLimitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [orbSkin, setOrbSkin] = useState<SphereOrbTone>("blue");
+  const [ownedPacks, setOwnedPacks] = useState<{ travel: boolean; food: boolean; business: boolean }>({ travel: false, food: false, business: false });
   // Mirror the UI-level rate into the audio module every time it changes so
   // subsequent calls to playTutorAudio / speakOffline inherit it.
   useEffect(() => { setTutorPlaybackRate(voiceRate); }, [voiceRate]);
+  useEffect(() => {
+    getActiveOrb().then((orb) => {
+      if (orb === "gold") setOrbSkin("gold");
+      else if (orb === "midnight") setOrbSkin("midnight");
+      else setOrbSkin("blue");
+    }).catch(() => {});
+    Promise.all([
+      hasPack("travel"),
+      hasPack("food"),
+      hasPack("business"),
+    ]).then(([travel, food, business]) => {
+      setOwnedPacks({ travel, food, business });
+    }).catch(() => {});
+  }, []);
   const lessonStartTs = useRef<number>(0);
   const turnScores = useRef<number[]>([]);
   const [micMuted, setMicMuted] = useState(false);
@@ -790,6 +871,7 @@ export default function TrainScreen() {
   const phraseSpeechRef = useRef<NativeSpeechSession | null>(null);
   const phraseOrbDebounceRef = useRef(false);
   const phraseScrollRef = useRef<ScrollView>(null);
+  const phraseChunkAttemptRef = useRef(0);
   const [phraseMicLevel, setPhraseMicLevel] = useState(0);
   // Scenario test & coaching state
   const [scenarioAttemptText, setScenarioAttemptText] = useState("");
@@ -1574,7 +1656,7 @@ export default function TrainScreen() {
   }, [response, aiState, language.code]);
 
   // ── Voice-speed verb pills ─────────────────────────────────────────────────
-  // "Slower": one-off 0.75× replay without changing the persisted rate.
+  // "Slower": one-off 0.65× replay without changing the persisted rate.
   const repeatSlower = useCallback(async () => {
     if (!response) return;
     await stopTutorAudio();
@@ -1588,7 +1670,7 @@ export default function TrainScreen() {
         
       },
       {
-        rate: 1.0,
+        rate: 0.65,
         onStart: () => setAiState("speaking"),
         onEnd: () => setAiState("idle"),
         onError: () => setAiState("idle"),
@@ -1767,11 +1849,26 @@ export default function TrainScreen() {
   if (normalizedMode === "quick") {
     const ENTRY_ORB = Math.min(SW * 0.40, 158);
 
-    const QUICK_PROMPTS = [
+    const BASE_PROMPTS = [
       { emoji: "\u{1F35D}", text: "Order food at a restaurant" },
       { emoji: "\u{1F9ED}", text: "Ask for directions" },
       { emoji: "\u{1F44B}", text: "Introduce yourself" },
-    ] as const;
+    ];
+    const PACK_PROMPTS: typeof BASE_PROMPTS = [
+      ...(ownedPacks.travel ? [
+        { emoji: "\u{2708}", text: "Check in to my hotel" },
+        { emoji: "\u{1F9F3}", text: "Ask where the gate is" },
+      ] : []),
+      ...(ownedPacks.food ? [
+        { emoji: "\u{2615}", text: "Order a coffee at a café" },
+        { emoji: "\u{1F9FE}", text: "Ask for the bill" },
+      ] : []),
+      ...(ownedPacks.business ? [
+        { emoji: "\u{1F4BC}", text: "Schedule a meeting" },
+        { emoji: "\u{1F91D}", text: "Greet a client formally" },
+      ] : []),
+    ];
+    const QUICK_PROMPTS = [...BASE_PROMPTS, ...PACK_PROMPTS].slice(0, 3);
 
     const goToQuickSession = (phrase: string) => {
       const trimmed = phrase.trim();
@@ -1814,7 +1911,7 @@ export default function TrainScreen() {
         </Svg>
 
         {/* ── Header: language pill + mode switcher ── */}
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 18, paddingBottom: 4 }}>
           <Pressable
             onPress={() => setShowLanguagePicker(!showLanguagePicker)}
             hitSlop={12}
@@ -1848,16 +1945,16 @@ export default function TrainScreen() {
           {/* Headline block */}
           <View style={{ paddingTop: 8 }}>
             <Text style={{
-              fontSize: 26, lineHeight: 32,
+              fontSize: 28, lineHeight: 34,
               fontFamily: "Geist-Bold", fontWeight: "800",
               color: "#1C1714", letterSpacing: -0.9,
             }}>
               {"What do you want to\nlearn to say "}
-              <Text style={{ fontFamily: "Fraunces-Italic", fontWeight: "700", fontSize: 26 }}>today</Text>
+              <Text style={{ fontFamily: "Fraunces-Italic", fontStyle: "italic", fontWeight: "700", fontSize: 28 }}>today</Text>
               {"?"}
             </Text>
             <Text style={{
-              marginTop: 4, fontSize: 13, lineHeight: 18,
+              marginTop: 6, fontSize: 13, lineHeight: 18,
               fontFamily: "Geist-Regular", color: "rgba(28,23,20,0.55)",
             }}>
               Tap a prompt, type below, or hold the orb to speak.
@@ -1895,21 +1992,36 @@ export default function TrainScreen() {
                   }}>
                     {p.text}
                   </Text>
+                  <Ionicons name="chevron-forward" size={14} color="#8A8278" />
                 </View>
               </Pressable>
             ))}
           </View>
 
-          {/* Orb — fills remaining space, centered. No "Tap to speak" label. */}
-          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingBottom: 80 }}>
+          {/* Orb — lifted higher so it clears the input pill, with "Tap to speak" label */}
+          <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingBottom: 150 }}>
             <SphereOrb
               state={aiState === "blocked" ? "idle" : aiState}
-              tone="blue"
+              tone={orbSkin}
               micLevel={micLevel}
               size={ENTRY_ORB_SIZE}
               onTap={handleMicTap}
               onLongPress={handleMicTap}
             />
+            <Text style={{
+              marginTop: 10, fontSize: 14,
+              fontFamily: "Geist-Bold", fontWeight: "700",
+              color: "#1C1714", letterSpacing: -0.2,
+            }}>
+              Tap to speak
+            </Text>
+            <Text style={{
+              marginTop: 2, fontSize: 12,
+              fontFamily: "Geist-Regular", fontStyle: "italic",
+              color: "rgba(28,23,20,0.40)",
+            }}>
+              or type below
+            </Text>
           </View>
 
         </View>
@@ -1939,10 +2051,20 @@ export default function TrainScreen() {
                   fontFamily: "Geist-Medium", fontWeight: "500",
                   color: "#1C1714", paddingVertical: 6,
                 }}
-                placeholder="What do you want to learn?…"
+                placeholder={`Learn something in ${language.label}…`}
                 placeholderTextColor="rgba(28,23,20,0.40)"
                 value={typedInput}
-                onChangeText={(t) => { if (t.trim().split(/\s+/).length <= 20) setTypedInput(t); }}
+                onChangeText={(t) => {
+                  const words = t.trim() === "" ? 0 : t.trim().split(/\s+/).length;
+                  if (words <= 20) {
+                    setTypedInput(t);
+                    setWordLimitError(false);
+                  } else {
+                    setWordLimitError(true);
+                    if (wordLimitTimerRef.current) clearTimeout(wordLimitTimerRef.current);
+                    wordLimitTimerRef.current = setTimeout(() => setWordLimitError(false), 2500);
+                  }
+                }}
                 onFocus={() => setIsTypingFocused(true)}
                 onBlur={() => setIsTypingFocused(false)}
                 onSubmitEditing={() => { setIsTypingFocused(false); goToQuickSession(typedInput); }}
@@ -1967,11 +2089,15 @@ export default function TrainScreen() {
                 />
               </Pressable>
             </View>
-            {typedInput.trim().length > 0 && (
+            {wordLimitError ? (
+              <Text style={{ textAlign: "center", fontSize: 12, fontFamily: "Geist-SemiBold", color: "#C0392B", marginTop: 6 }}>
+                Sorry, 20 words is the maximum.
+              </Text>
+            ) : typedInput.trim().length > 0 ? (
               <Text style={{ textAlign: "right", fontSize: 11, fontFamily: "Geist-Medium", color: "rgba(28,23,20,0.35)", marginTop: 4, paddingRight: 6 }}>
                 {typedInput.trim().split(/\s+/).length} / 20
               </Text>
-            )}
+            ) : null}
           </View>
         </KeyboardAvoidingView>
 
@@ -2078,6 +2204,7 @@ export default function TrainScreen() {
       setPhraseFeedback(null);
       setPhraseAttemptText("");
       setPhraseComplete(false);
+      phraseChunkAttemptRef.current = 0;
       setScenarioAttemptText("");
       setScenarioFeedback(null);
       setSkillUnlockVisible(false);
@@ -2169,10 +2296,14 @@ export default function TrainScreen() {
               listenForFinalSentence();
               return;
             }
-            // Next chunk exists → auto-advance
+            // Next chunk exists → auto-advance with meaning context
             const nextChunk = updated.chunks[updated.currentChunkIndex];
             if (nextChunk) {
-              await speakRoutedText({ text: "Nice! Moving on.", languageCode: nativeCode });
+              phraseChunkAttemptRef.current = 0;
+              const advanceLine = nextChunk.english
+                ? `Nice! Next up: "${nextChunk.english}". Say:`
+                : "Nice! Moving on.";
+              await speakRoutedText({ text: advanceLine, languageCode: nativeCode });
               prefetchDeepgramTts(nextChunk.target, language.code);
               await new Promise((r) => setTimeout(r, 150));
               await speakRoutedText({ text: nextChunk.target, languageCode: language.code });
@@ -2184,12 +2315,43 @@ export default function TrainScreen() {
               listenForChunk(nextChunk.target);
               return;
             }
+            phraseChunkAttemptRef.current = 0;
             await speakRoutedText({ text: "Nice! Moving on.", languageCode: nativeCode });
           } else {
-            const coachLine = fb.suggestion || "Try again — listen carefully.";
+            // ── FAIL — score-tiered chunk coaching ──
+            phraseChunkAttemptRef.current += 1;
+            const attemptN = phraseChunkAttemptRef.current;
+            let coachLine: string;
+
+            if (fb.score >= 0.72) {
+              const opts = [
+                fb.suggestion || "So close — one more try!",
+                "Almost there! Focus on the ending.",
+                "Nearly got it — just a tiny tweak.",
+              ];
+              coachLine = opts[attemptN % opts.length];
+            } else if (fb.score >= 0.45) {
+              const opts = [
+                fb.suggestion || "Good try — listen closely to each syllable.",
+                "Getting there! Match the rhythm more closely.",
+                "Focus on how the sounds connect together.",
+              ];
+              coachLine = opts[attemptN % opts.length];
+            } else {
+              const opts = [
+                "Let me slow it down — listen carefully.",
+                "Try matching just the first sound.",
+                "Break it down — one syllable at a time.",
+              ];
+              coachLine = opts[attemptN % opts.length];
+            }
+
             prefetchDeepgramTts(targetText, language.code);
             await speakRoutedText({ text: coachLine, languageCode: nativeCode });
-            await new Promise((r) => setTimeout(r, 150));
+            await new Promise((r) => setTimeout(r, 200));
+            // Slow-then-fast replay for chunks
+            await speakRoutedText({ text: targetText, languageCode: language.code, rate: 0.75 });
+            await new Promise((r) => setTimeout(r, 350));
             await speakRoutedText({ text: targetText, languageCode: language.code });
           }
         } catch {}
@@ -2207,6 +2369,7 @@ export default function TrainScreen() {
           setPhraseFeedback({
             score: 0, rating: "off", missingSegments: [],
             suggestion: err?.message || "Couldn't reach the microphone. Please try again.",
+            wordMatches: [], matchedWords: 0, totalWords: 0, wrongLanguageDetected: false,
           });
         }
       }
@@ -2256,8 +2419,16 @@ export default function TrainScreen() {
 
         // Generate a scenario prompt for the scenario phase
         if (updated.phase === "scenario") {
-          const scenarioLine = `Imagine you're in a real conversation. Someone asks you something and you need to respond with: "${phraseSession.fullTarget}"`;
+          const scenarioLine = `Now imagine you're in a real conversation. Someone asks you something and you need to respond with the full phrase. Say it naturally!`;
           setPhraseSession((prev) => prev ? phraseAdvanceToScenario(prev, scenarioLine) : null);
+          // Speak the scenario prompt: intro in native, then the target phrase in target language
+          setPhraseCoachingSpeaking(true);
+          try {
+            await speakRoutedText({ text: "Now let's put it all together in a real scenario.", languageCode: nativeCode });
+            await new Promise((r) => setTimeout(r, 200));
+            await speakRoutedText({ text: phraseSession.fullTarget, languageCode: language.code });
+          } catch {}
+          setPhraseCoachingSpeaking(false);
         }
       } catch (err: any) {
         phraseSpeechRef.current = null;
@@ -2271,6 +2442,7 @@ export default function TrainScreen() {
           setPhraseFeedback({
             score: 0, rating: "off", missingSegments: [],
             suggestion: err?.message || "Couldn't reach the microphone. Please try again.",
+            wordMatches: [], matchedWords: 0, totalWords: 0, wrongLanguageDetected: false,
           });
         }
       }
@@ -2334,10 +2506,9 @@ export default function TrainScreen() {
             }
             setSkillUnlockVisible(true);
           } else {
-            const coachLine = fb.suggestion || "Not quite — let's practice the tricky parts again.";
             prefetchDeepgramTts(phraseSession.fullTarget, language.code);
-            await speakRoutedText({ text: coachLine, languageCode: nativeCode });
-            await new Promise((r) => setTimeout(r, 150));
+            await speakRoutedText({ text: "Not quite there yet. Let's go back and practice the part you struggled with.", languageCode: nativeCode });
+            await new Promise((r) => setTimeout(r, 200));
             await speakRoutedText({ text: phraseSession.fullTarget, languageCode: language.code });
           }
         } catch {}
@@ -2354,6 +2525,7 @@ export default function TrainScreen() {
           setScenarioFeedback({
             score: 0, rating: "off", missingSegments: [],
             suggestion: err?.message || "Couldn't reach the microphone. Please try again.",
+            wordMatches: [], matchedWords: 0, totalWords: 0, wrongLanguageDetected: false,
           });
         }
       }
@@ -2414,7 +2586,7 @@ export default function TrainScreen() {
           </Svg>
 
           {/* Header */}
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 8, paddingBottom: 4 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingTop: 18, paddingBottom: 4 }}>
             <Pressable
               onPress={() => setShowLanguagePicker(!showLanguagePicker)}
               hitSlop={12}
@@ -2670,33 +2842,50 @@ export default function TrainScreen() {
             <Text style={{ fontFamily: "Geist-Bold", fontSize: 13, color: "#1C1714" }}>Back</Text>
           </Pressable>
 
-          {/* Progress dots */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            {phraseSession.chunks.map((_, i) => {
-              const mastered = phraseSession.chunkMastered[i];
-              const isCurrent = i === phraseSession.currentChunkIndex && phraseSession.phase === "practicing";
-              return (
-                <View key={i} style={{
-                  width: isCurrent ? 20 : 8, height: 8, borderRadius: 4,
-                  backgroundColor: mastered ? "#7A4A22" : isCurrent ? "rgba(122,74,34,0.40)" : "rgba(122,74,34,0.12)",
-                }} />
-              );
-            })}
-            {/* Final dot */}
-            <View style={{
-              width: isFinalAttempt ? 20 : 8, height: 8, borderRadius: 4,
-              backgroundColor: (isScenario || isRemediate || isDone) ? "#7A4A22" : isFinalAttempt ? "rgba(122,74,34,0.40)" : "rgba(122,74,34,0.12)",
-            }} />
-            {/* Scenario dot */}
-            <View style={{
-              width: isScenario ? 20 : 8, height: 8, borderRadius: 4,
-              backgroundColor: isDone ? "#22C55E" : isScenario ? "#2563EB" : isRemediate ? "rgba(37,99,235,0.40)" : "rgba(122,74,34,0.12)",
-            }} />
-          </View>
-
-          <Text style={{ fontFamily: "Geist-SemiBold", fontSize: 10, color: isScenario ? "#2563EB" : "#7A4A22", letterSpacing: 1.2 }}>
-            {isDone ? "SKILL UNLOCKED" : isRemediate ? "REMEDIATION" : isScenario ? "SCENARIO" : isFinalAttempt ? "FULL SENTENCE" : isCompleted ? "DONE" : `${(phraseProgress?.mastered ?? 0) + 1} of ${phraseSession.chunks.length}`}
-          </Text>
+          {/* Progress ring */}
+          {(() => {
+            const totalSteps = phraseSession.chunks.length + 2; // chunks + final + scenario
+            const masteredChunks = phraseSession.chunkMastered.filter(Boolean).length;
+            const completedSteps = masteredChunks
+              + (isFinalAttempt || isScenario || isRemediate || isDone ? 1 : 0)
+              + (isDone ? 1 : 0);
+            const progress = Math.min(completedSteps / totalSteps, 1);
+            const ringSize = 36;
+            const strokeW = 3.5;
+            const radius = (ringSize - strokeW) / 2;
+            const circumference = 2 * Math.PI * radius;
+            const strokeDashoffset = circumference * (1 - progress);
+            const ringColor = isDone ? "#22C55E" : isScenario ? "#2563EB" : progress >= 0.7 ? "#22C55E" : "#7A4A22";
+            const phaseLabel = isDone ? "DONE" : isRemediate ? "REMEDIATION" : isScenario ? "SCENARIO" : isFinalAttempt ? "FULL SENTENCE" : isCompleted ? "DONE" : `CHUNK ${(phraseProgress?.mastered ?? 0) + 1}/${phraseSession.chunks.length}`;
+            return (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={{ width: ringSize, height: ringSize }}>
+                  <Svg width={ringSize} height={ringSize}>
+                    <Circle
+                      cx={ringSize / 2} cy={ringSize / 2} r={radius}
+                      stroke="rgba(122,74,34,0.10)" strokeWidth={strokeW} fill="none"
+                    />
+                    <Circle
+                      cx={ringSize / 2} cy={ringSize / 2} r={radius}
+                      stroke={ringColor} strokeWidth={strokeW} fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray={`${circumference}`}
+                      strokeDashoffset={strokeDashoffset}
+                      rotation={-90} origin={`${ringSize / 2}, ${ringSize / 2}`}
+                    />
+                  </Svg>
+                  <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontFamily: "Geist-Bold", fontSize: 10, color: ringColor }}>
+                      {Math.round(progress * 100)}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={{ fontFamily: "Geist-SemiBold", fontSize: 10, color: ringColor, letterSpacing: 1.2 }}>
+                  {phaseLabel}
+                </Text>
+              </View>
+            );
+          })()}
         </View>
 
         <ScrollView ref={phraseScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 22, paddingTop: 12, paddingBottom: 200 }} showsVerticalScrollIndicator={false}>
@@ -2834,32 +3023,124 @@ export default function TrainScreen() {
               borderWidth: 1,
               borderColor: phraseFeedback.score >= PHRASE_MASTERY_THRESHOLD ? "rgba(34,197,94,0.20)" : "rgba(196,166,124,0.25)",
             }}>
+              {/* Header: icon + score + threshold */}
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 }}>
                 <Ionicons
                   name={phraseFeedback.score >= PHRASE_MASTERY_THRESHOLD ? "checkmark-circle" : "refresh-circle"}
                   size={22}
                   color={phraseFeedback.score >= PHRASE_MASTERY_THRESHOLD ? "#22C55E" : "#C4A67C"}
                 />
-                <Text style={{ fontFamily: "Geist-Bold", fontSize: 16, color: "#1C1714" }}>
-                  {Math.round(phraseFeedback.score * 100)}%
-                </Text>
-                <Text style={{ fontFamily: "Geist-Regular", fontSize: 13, color: "rgba(28,23,20,0.55)" }}>
+                <View style={{
+                  backgroundColor: phraseFeedback.score >= PHRASE_MASTERY_THRESHOLD ? "rgba(34,197,94,0.12)" : "rgba(196,166,124,0.15)",
+                  paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8,
+                }}>
+                  <Text style={{ fontFamily: "Geist-Bold", fontSize: 14, color: phraseFeedback.score >= PHRASE_MASTERY_THRESHOLD ? "#1A7A3C" : "#7A4A22" }}>
+                    {Math.round(phraseFeedback.score * 100)}%
+                  </Text>
+                </View>
+                <Text style={{ fontFamily: "Geist-Regular", fontSize: 12, color: "rgba(28,23,20,0.50)", flex: 1 }}>
                   {phraseFeedback.score >= PHRASE_MASTERY_THRESHOLD ? "Nice! Moving on." : `Need ${Math.round(PHRASE_MASTERY_THRESHOLD * 100)}% to advance.`}
                 </Text>
               </View>
+
+              {/* Word progress bar */}
+              {phraseFeedback.totalWords > 0 && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 12 }}>
+                  <View style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: "rgba(122,74,34,0.08)", overflow: "hidden" }}>
+                    <View style={{
+                      width: `${Math.round((phraseFeedback.matchedWords / phraseFeedback.totalWords) * 100)}%`,
+                      height: 4, borderRadius: 2,
+                      backgroundColor: phraseFeedback.score >= 0.72 ? "#22C55E" : phraseFeedback.score >= 0.45 ? "#C4A67C" : "#EF4444",
+                    }} />
+                  </View>
+                  <Text style={{ fontFamily: "Geist-Bold", fontSize: 10, color: "rgba(28,23,20,0.40)", minWidth: 30, textAlign: "right" }}>
+                    {phraseFeedback.matchedWords}/{phraseFeedback.totalWords}
+                  </Text>
+                </View>
+              )}
+
+              {/* You said */}
               {phraseAttemptText ? (
-                <Text style={{ fontFamily: "Geist-Regular", fontSize: 13, color: "rgba(28,23,20,0.45)", marginBottom: 6 }}>
+                <Text style={{ fontFamily: "Geist-Regular", fontSize: 12, color: "rgba(28,23,20,0.40)", marginBottom: 8 }}>
                   You said: "{phraseAttemptText}"
                 </Text>
               ) : null}
-              {currentChunk && (
+
+              {/* Visual word diff */}
+              {phraseFeedback.wordMatches && phraseFeedback.wordMatches.length > 0 ? (
+                <View style={{ marginBottom: 8 }}>
+                  <Text style={{ fontFamily: "Geist-SemiBold", fontSize: 10, color: "#7A4A22", letterSpacing: 1, marginBottom: 6 }}>TARGET</Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+                    {phraseFeedback.wordMatches.map((wm: WordMatch, i: number) => {
+                      const bgColor =
+                        wm.status === "matched" ? "rgba(34,197,94,0.10)" :
+                        wm.status === "partial" ? "rgba(168,93,46,0.10)" :
+                                                  "rgba(239,68,68,0.10)";
+                      const borderCol =
+                        wm.status === "matched" ? "rgba(34,197,94,0.25)" :
+                        wm.status === "partial" ? "rgba(168,93,46,0.25)" :
+                                                  "rgba(239,68,68,0.25)";
+                      const textCol =
+                        wm.status === "matched" ? "#1A7A3C" :
+                        wm.status === "partial" ? "#7A4A22" :
+                                                  "#C53030";
+                      return (
+                        <View key={`${wm.word}-${i}`} style={{
+                          flexDirection: "row", alignItems: "center",
+                          backgroundColor: bgColor, borderRadius: 7,
+                          borderWidth: 1, borderColor: borderCol,
+                          paddingHorizontal: 7, paddingVertical: 4, gap: 3,
+                        }}>
+                          <Text style={{ fontFamily: "Geist-Bold", fontSize: 14, color: textCol }}>
+                            {wm.word}
+                          </Text>
+                          {(wm.status === "missed" || wm.status === "partial") ? (
+                            <Pressable
+                              hitSlop={6}
+                              onPress={() => {
+                                speakRoutedText({ text: wm.word, languageCode: language.code, rate: 0.75 }).catch(() => {});
+                              }}
+                              style={({ pressed }) => ({
+                                width: 20, height: 20, borderRadius: 10,
+                                backgroundColor: textCol + "15",
+                                alignItems: "center", justifyContent: "center",
+                                opacity: pressed ? 0.7 : 1,
+                              })}
+                            >
+                              <Ionicons name="volume-medium" size={11} color={textCol} />
+                            </Pressable>
+                          ) : (
+                            <Ionicons name="checkmark" size={12} color={textCol} style={{ opacity: 0.6 }} />
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : currentChunk ? (
                 <View style={{ marginBottom: 6 }}>
                   <Text style={{ fontFamily: "Geist-SemiBold", fontSize: 10, color: "#7A4A22", letterSpacing: 1, marginBottom: 4 }}>TARGET</Text>
                   <Text style={{ fontFamily: "Geist-Bold", fontSize: 16, color: "#1C1714" }}>
                     {language.code.startsWith("zh") && currentChunk.phonetic ? currentChunk.phonetic : currentChunk.target}
                   </Text>
                 </View>
-              )}
+              ) : null}
+
+              {/* Wrong language warning */}
+              {phraseFeedback.wrongLanguageDetected ? (
+                <View style={{
+                  flexDirection: "row", alignItems: "center", gap: 6,
+                  backgroundColor: "rgba(239,68,68,0.06)", borderRadius: 8,
+                  paddingHorizontal: 8, paddingVertical: 6, marginBottom: 6,
+                }}>
+                  <Ionicons name="warning" size={13} color="#C53030" />
+                  <Text style={{ fontFamily: "Geist-Medium", fontSize: 11, color: "#C53030", flex: 1 }}>
+                    Spoke in English — try in {language.label}!
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Coaching suggestion */}
               {phraseFeedback.suggestion ? (
                 <Text style={{ fontFamily: "Geist-Regular", fontSize: 12, color: "#7A4A22", marginTop: 4 }}>
                   {phraseFeedback.suggestion}
@@ -2938,7 +3219,7 @@ export default function TrainScreen() {
                 <Text style={{ fontFamily: "Geist-SemiBold", fontSize: 10, color: "#7A4A22", letterSpacing: 1.3 }}>REMEDIATION</Text>
               </View>
               <Text style={{ fontFamily: "Geist-Regular", fontSize: 14, color: "#1C1714", lineHeight: 20, marginBottom: 14 }}>
-                Let's practice the tricky parts. Listen carefully, then say the full phrase again.
+                Let's go back to the chunk you struggled with most. Practice it until it clicks, then we'll try the full phrase again.
               </Text>
               <View style={{ alignItems: "center", marginBottom: 14 }}>
                 <TongueDiagram phoneme={phraseSession.fullTarget?.charAt(0) || "a"} size={110} />
@@ -2951,7 +3232,7 @@ export default function TrainScreen() {
                   opacity: pressed ? 0.85 : 1,
                 })}
               >
-                <Text style={{ fontFamily: "Geist-Bold", fontSize: 14, color: "#FFF" }}>Try scenario again</Text>
+                <Text style={{ fontFamily: "Geist-Bold", fontSize: 14, color: "#FFF" }}>Practice weak chunk</Text>
               </Pressable>
             </View>
           )}

@@ -603,7 +603,25 @@ export function phraseScoreScenario(session: PhraseSession, score: number): Phra
 }
 
 export function phraseAdvanceFromRemediate(session: PhraseSession): PhraseSession {
-  return { ...session, phase: "scenario" };
+  // Find the weakest chunk (lowest score) and loop the user back to practice it
+  let weakestIdx = 0;
+  let weakestScore = Infinity;
+  for (let i = 0; i < session.chunks.length; i++) {
+    const s = session.chunkScores[i] ?? 0;
+    if (s < weakestScore) {
+      weakestScore = s;
+      weakestIdx = i;
+    }
+  }
+  // Reset mastery on the weak chunk so the user must re-practice it
+  const mastered = [...session.chunkMastered];
+  mastered[weakestIdx] = false;
+  return {
+    ...session,
+    phase: "practicing",
+    currentChunkIndex: weakestIdx,
+    chunkMastered: mastered,
+  };
 }
 
 export function phraseScoreChunk(

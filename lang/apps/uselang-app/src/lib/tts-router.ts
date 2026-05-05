@@ -27,14 +27,13 @@ if (!DEEPGRAM_TTS_KEY) {
 // Deepgram Aura voices for supported languages. Mandarin (zh) has no Aura
 // voice — it uses Apple's native zh-CN TTS which works great offline.
 
-const DEEPGRAM_VOICES: Record<string, string> = {
+const DEEPGRAM_VOICES_FEMALE: Record<string, string> = {
   en: "aura-asteria-en",
   "en-US": "aura-asteria-en",
   "en-GB": "aura-asteria-en",
   fr: "aura-2-agathe-fr",
   "fr-FR": "aura-2-agathe-fr",
   "fr-CA": "aura-2-agathe-fr",
-  // luna-es is female, warm, and clear — much less deep than sirio-es (male)
   es: "aura-2-luna-es",
   "es-ES": "aura-2-luna-es",
   "es-MX": "aura-2-luna-es",
@@ -43,8 +42,54 @@ const DEEPGRAM_VOICES: Record<string, string> = {
   "de-DE": "aura-2-hector-de",
 };
 
+const DEEPGRAM_VOICES_MALE: Record<string, string> = {
+  en: "aura-orion-en",
+  "en-US": "aura-orion-en",
+  "en-GB": "aura-orion-en",
+  fr: "aura-2-arcas-fr",
+  "fr-FR": "aura-2-arcas-fr",
+  "fr-CA": "aura-2-arcas-fr",
+  es: "aura-2-aries-es",
+  "es-ES": "aura-2-aries-es",
+  "es-MX": "aura-2-aries-es",
+  "es-419": "aura-2-aries-es",
+  de: "aura-2-hector-de",
+  "de-DE": "aura-2-hector-de",
+};
+
+// ── Voice gender preference (set from settings, persisted externally) ──────
+let _voiceGenderPref: "female" | "male" | "auto" = "auto";
+
+export function setTtsVoiceGender(gender: "female" | "male" | "auto"): void {
+  _voiceGenderPref = gender;
+}
+
+export function getTtsVoiceGender(): "female" | "male" | "auto" {
+  return _voiceGenderPref;
+}
+
+/**
+ * Loads and applies the persisted voice gender preference from user profile.
+ * Call once on app start (e.g. in _layout.tsx).
+ */
+export async function initTtsVoiceGender(): Promise<void> {
+  try {
+    const { getUserProfile } = await import("./user-store");
+    const profile = await getUserProfile();
+    if (profile.voiceGender) _voiceGenderPref = profile.voiceGender;
+  } catch { /* non-fatal */ }
+}
+
 function deepgramVoiceFor(lang: string): string | null {
-  return DEEPGRAM_VOICES[lang] || DEEPGRAM_VOICES[lang.slice(0, 2)] || null;
+  const pref = _voiceGenderPref;
+  if (pref === "male") {
+    return DEEPGRAM_VOICES_MALE[lang] || DEEPGRAM_VOICES_MALE[lang.slice(0, 2)] || null;
+  }
+  if (pref === "female") {
+    return DEEPGRAM_VOICES_FEMALE[lang] || DEEPGRAM_VOICES_FEMALE[lang.slice(0, 2)] || null;
+  }
+  // auto: prefer female (warmer/clearer for language learning)
+  return DEEPGRAM_VOICES_FEMALE[lang] || DEEPGRAM_VOICES_FEMALE[lang.slice(0, 2)] || null;
 }
 
 // ── Online detection cache ────────────────────────────────────────────────
