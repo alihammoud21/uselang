@@ -52,6 +52,7 @@ export interface TutorArticulation {
   lipShape: string;
   airflow: string;
   stress: string;
+  diagramHints?: string[];
 }
 
 export interface TutorGrammarBullet {

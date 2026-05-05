@@ -113,7 +113,7 @@ const STATUS_LABEL: Record<AIState, string> = {
 // is around -25 to -15 dBFS. -50 is conservative; if a user mumbles or holds
 // the phone at arm's length they should still register as "speaking".
 const VAD_SILENCE_DB = -50;      // below this counts as silence
-const VAD_SILENCE_MS = 2000;     // stop after 2s of continuous silence
+const VAD_SILENCE_MS = 1400;     // stop after 1.4s of continuous silence
 const VAD_MIN_SPEECH_MS = 500;   // must have heard speech for 0.5s before silence-stop applies
 // Hard ceiling on a single listening turn. 15s gives the user time to
 // speak a full sentence naturally. Prevents the orb from hanging forever.
@@ -1542,7 +1542,7 @@ export default function TrainScreen() {
       ) {
         beginNativeListening();
       }
-    }, 350);
+    }, 150);
     return () => clearTimeout(id);
   }, [aiState, beginNativeListening, micMuted, normalizedMode]);
 
@@ -2288,11 +2288,11 @@ export default function TrainScreen() {
               // All chunks mastered → move to full sentence
               await speakRoutedText({ text: "Great! Now say the full sentence.", languageCode: nativeCode });
               prefetchDeepgramTts(updated.fullTarget, language.code);
-              await new Promise((r) => setTimeout(r, 150));
+              await new Promise((r) => setTimeout(r, 80));
               await speakRoutedText({ text: updated.fullTarget, languageCode: language.code });
               setPhraseCoachingSpeaking(false);
               // Auto-open mic for full sentence
-              await new Promise((r) => setTimeout(r, 400));
+              await new Promise((r) => setTimeout(r, 200));
               listenForFinalSentence();
               return;
             }
@@ -2305,13 +2305,13 @@ export default function TrainScreen() {
                 : "Nice! Moving on.";
               await speakRoutedText({ text: advanceLine, languageCode: nativeCode });
               prefetchDeepgramTts(nextChunk.target, language.code);
-              await new Promise((r) => setTimeout(r, 150));
+              await new Promise((r) => setTimeout(r, 80));
               await speakRoutedText({ text: nextChunk.target, languageCode: language.code });
               setPhraseCoachingSpeaking(false);
               setPhraseFeedback(null);
               setPhraseAttemptText("");
               // Auto-open mic for the next chunk
-              await new Promise((r) => setTimeout(r, 400));
+              await new Promise((r) => setTimeout(r, 200));
               listenForChunk(nextChunk.target);
               return;
             }
@@ -2348,10 +2348,10 @@ export default function TrainScreen() {
 
             prefetchDeepgramTts(targetText, language.code);
             await speakRoutedText({ text: coachLine, languageCode: nativeCode });
-            await new Promise((r) => setTimeout(r, 200));
+            await new Promise((r) => setTimeout(r, 100));
             // Slow-then-fast replay for chunks
             await speakRoutedText({ text: targetText, languageCode: language.code, rate: 0.75 });
-            await new Promise((r) => setTimeout(r, 350));
+            await new Promise((r) => setTimeout(r, 180));
             await speakRoutedText({ text: targetText, languageCode: language.code });
           }
         } catch {}
@@ -2411,7 +2411,7 @@ export default function TrainScreen() {
           } else {
             prefetchDeepgramTts(phraseSession.fullTarget, language.code);
             await speakRoutedText({ text: fb.suggestion || "Try saying the full sentence again.", languageCode: nativeCode });
-            await new Promise((r) => setTimeout(r, 150));
+            await new Promise((r) => setTimeout(r, 80));
             await speakRoutedText({ text: phraseSession.fullTarget, languageCode: language.code });
           }
         } catch {}
@@ -2425,7 +2425,7 @@ export default function TrainScreen() {
           setPhraseCoachingSpeaking(true);
           try {
             await speakRoutedText({ text: "Now let's put it all together in a real scenario.", languageCode: nativeCode });
-            await new Promise((r) => setTimeout(r, 200));
+            await new Promise((r) => setTimeout(r, 100));
             await speakRoutedText({ text: phraseSession.fullTarget, languageCode: language.code });
           } catch {}
           setPhraseCoachingSpeaking(false);

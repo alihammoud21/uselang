@@ -384,7 +384,7 @@ export default function QuickSessionScreen() {
             setAiState("idle");
             autoListenTimerRef.current = setTimeout(() => {
               if (mountedRef.current) startListeningRef.current?.();
-            }, 600);
+            }, 250);
           } else {
             setAiState("idle");
           }
@@ -439,7 +439,7 @@ export default function QuickSessionScreen() {
     // Stop any active TTS/audio before starting mic — prevents native audio crash
     await stopTutorAudio();
     // Let the audio hardware settle before opening the mic
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 100));
     setLastAttemptText("");
     setFeedback(null);
     setAiState("listening");
@@ -524,20 +524,20 @@ export default function QuickSessionScreen() {
             coachLine = options[attemptNum % options.length];
           }
           await speakRoutedText({ text: coachLine, languageCode: nativeLang });
-          await new Promise((r) => setTimeout(r, 250));
+          await new Promise((r) => setTimeout(r, 120));
 
           if (fb.score < 0.60 && fb.missingSegments.length > 0 && fb.missingSegments.length <= 3) {
             // Very low score — replay just the missed words slowly
             for (const word of fb.missingSegments.slice(0, 3)) {
               await speakRoutedText({ text: word, languageCode: learnLang, rate: 0.7 });
-              await new Promise((r) => setTimeout(r, 300));
+              await new Promise((r) => setTimeout(r, 150));
             }
-            await new Promise((r) => setTimeout(r, 200));
+            await new Promise((r) => setTimeout(r, 100));
             await speakRoutedText({ text: targetPhrase, languageCode: learnLang });
           } else {
             // Slow-then-fast: demo at 0.75x, pause, then natural speed
             await speakRoutedText({ text: targetPhrase, languageCode: learnLang, rate: 0.75 });
-            await new Promise((r) => setTimeout(r, 400));
+            await new Promise((r) => setTimeout(r, 200));
             await speakRoutedText({ text: targetPhrase, languageCode: learnLang });
           }
         } catch {}

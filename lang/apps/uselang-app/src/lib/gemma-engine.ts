@@ -176,8 +176,20 @@ export async function loadGemmaModel(): Promise<boolean> {
   }
 
   if (engineState.loading) {
-    console.log("[gemma] Load already in progress. Skipping.");
-    return false;
+    // Another call (e.g. _layout.tsx auto-load) is already loading the model.
+    // WAIT for it to finish instead of returning false and falling to stub.
+    // Poll at 200ms intervals, give up after 30s.
+    console.log("[gemma] Load already in progress — waiting for it to finish…");
+    const deadline = Date.now() + 30_000;
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (!engineState.loading || Date.now() > deadline) { resolve(); return; }
+        setTimeout(check, 200);
+      };
+      check();
+    });
+    console.log(`[gemma] Waited for in-progress load. Result: loaded=${engineState.loaded}, usingStub=${engineState.usingStub}`);
+    return engineState.loaded;
   }
 
   if (!llm) {
