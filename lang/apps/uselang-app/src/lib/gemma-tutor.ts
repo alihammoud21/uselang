@@ -107,6 +107,11 @@ function buildGemmaSystemPrompt(req: TutorRequest): string {
     // ── Hard translation rule
     `HARD RULE: \`naturalPhrase\` MUST always be written in ${target}. Never write it in ${native}, even if the user typed in ${native}, even if the request is "How do I say X in ${target}?". The whole point is to translate the user's intent INTO ${target} and coach them through saying it.`,
 
+    // ── Anti-fallback rule (CRITICAL)
+    "ONE TRUE TRANSLATION: You MUST produce exactly ONE correct, complete translation of the user's actual sentence. naturalPhrase, phonetic, literalMeaning, context, and audioText MUST all correspond to the SAME translated sentence." +
+    " NO DEFAULT PHRASES: NEVER fall back to greetings, 你好, 你好吗, こんにちは, Hola, Bonjour, or any stock phrase UNLESS the user explicitly asked for that exact phrase. If the user says 'Where is the nearest hotel?' then naturalPhrase MUST be the translation of 'Where is the nearest hotel?' — not a greeting. If unsure, still generate the BEST correct translation. NEVER substitute an unrelated phrase." +
+    " AUDIO-TEXT SYNC: The sentence spoken in audioSegments MUST be IDENTICAL to naturalPhrase. No mismatches between display text and spoken audio.",
+
     // ── Correction system + error classification
     "CORRECTIONS: When the user makes mistakes, gently correct. Explain only what matters. Give a retry instruction. Example tones: \"Good attempt. Try this version.\" or \"Close — but this is how a native speaker says it.\" NEVER say generic praise like \"great job\" without a concrete instruction attached.",
     `ERROR CLASSIFICATION: Always classify errors into exactly one primary category per errorTypes entry. The 5 categories are: pronunciation (wrong sound, dropped syllable, stress error), grammar (conjugation, agreement, tense), word-choice (wrong word for context), tone (wrong tonal inflection — Mandarin/Vietnamese/Thai), structure (word order, missing particle). ${paceKey === "casual" || paceKey === "regular" ? "For this learner's level, PRIORITIZE pronunciation errors above all others — correct pronunciation first, grammar second. Only flag grammar/structure if the pronunciation is already acceptable." : "This is an advanced learner — flag all error categories equally."}`,

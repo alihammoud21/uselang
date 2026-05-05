@@ -1052,7 +1052,7 @@ function genericEntry(targetLang: string, userPhrase: string): StubEntry {
       phrase: fallbackPhrase.phrase,
       phonetic: fallbackPhrase.phonetic,
       meaning: fallbackPhrase.meaning,
-      context: `Here's a useful ${langLabel} phrase to practice.`,
+      context: `I couldn't translate that exactly, but here's a useful ${langLabel} phrase to practice instead.`,
       pronunciationTip: "Listen carefully and repeat after the tutor.",
       articulation: defaultArt,
     };
@@ -1069,19 +1069,21 @@ function genericEntry(targetLang: string, userPhrase: string): StubEntry {
 }
 
 // Safe fallback phrases when we can't translate — always in the target language.
+// IMPORTANT: These must NOT be greetings. Use practical phrases so the fallback
+// doesn't look like a translation of the user's actual input.
 const SAFE_PRACTICE_PHRASES: Record<string, { phrase: string; phonetic: string; meaning: string }> = {
-  fr: { phrase: "Comment allez-vous ?", phonetic: "koh-MAWN tah-lay VOO", meaning: "How are you?" },
-  es: { phrase: "¿Cómo estás?", phonetic: "KOH-moh ehs-TAHS", meaning: "How are you?" },
-  de: { phrase: "Wie geht es Ihnen?", phonetic: "vee GAYT es EE-nen", meaning: "How are you?" },
-  it: { phrase: "Come stai?", phonetic: "KOH-meh STAI", meaning: "How are you?" },
-  pt: { phrase: "Como você está?", phonetic: "KOH-moo voh-SEH ehs-TAH", meaning: "How are you?" },
-  ja: { phrase: "お元気ですか？", phonetic: "oh-GEN-kee DES-ka", meaning: "How are you?" },
-  zh: { phrase: "你好吗？", phonetic: "nǐ hǎo ma", meaning: "How are you?" },
-  ko: { phrase: "잘 지내세요?", phonetic: "jal ji-NAE-se-yo", meaning: "How are you?" },
-  ar: { phrase: "كيف حالك؟", phonetic: "KAY-fa HAA-lak", meaning: "How are you?" },
-  hi: { phrase: "आप कैसे हैं?", phonetic: "aap KAI-say HAIN", meaning: "How are you?" },
-  nl: { phrase: "Hoe gaat het?", phonetic: "hoo HAAT het", meaning: "How are you?" },
-  ru: { phrase: "Как дела?", phonetic: "kak dye-LAH", meaning: "How are you?" },
+  fr: { phrase: "Je voudrais commander, s'il vous plaît.", phonetic: "zhuh voo-DREH koh-mawn-DAY seel voo PLEH", meaning: "I would like to order, please." },
+  es: { phrase: "Me gustaría pedir, por favor.", phonetic: "meh goos-tah-REE-ah peh-DEER por fah-VOR", meaning: "I would like to order, please." },
+  de: { phrase: "Ich möchte bestellen, bitte.", phonetic: "ikh MERKH-teh beh-SHTEL-en BIT-eh", meaning: "I would like to order, please." },
+  it: { phrase: "Vorrei ordinare, per favore.", phonetic: "vor-RAY or-dee-NAH-reh pair fah-VOH-reh", meaning: "I would like to order, please." },
+  pt: { phrase: "Eu gostaria de pedir, por favor.", phonetic: "eh-oo gos-tah-REE-ah jee peh-JEER por fah-VOR", meaning: "I would like to order, please." },
+  ja: { phrase: "注文したいのですが。", phonetic: "chuu-MON shee-TAI no DES-ga", meaning: "I would like to order." },
+  zh: { phrase: "我想点餐，请问可以吗？", phonetic: "wǒ xiǎng diǎn cān, qǐng wèn kě yǐ ma", meaning: "I would like to order, may I?" },
+  ko: { phrase: "주문하고 싶습니다.", phonetic: "joo-mun-HA-go ship-SEUM-ni-da", meaning: "I would like to order." },
+  ar: { phrase: "أريد أن أطلب، من فضلك.", phonetic: "oo-REE-doo an AT-lub min FAD-lak", meaning: "I would like to order, please." },
+  hi: { phrase: "मैं ऑर्डर करना चाहता हूँ।", phonetic: "main OR-der KAR-nah CHAH-tah hoon", meaning: "I would like to order." },
+  nl: { phrase: "Ik zou graag willen bestellen.", phonetic: "ik zow HRAHKH WIL-en beh-STEL-en", meaning: "I would like to order." },
+  ru: { phrase: "Я хотел бы заказать, пожалуйста.", phonetic: "ya ha-TYEL bih za-ka-ZAT pa-ZHAL-sta", meaning: "I would like to order, please." },
 };
 
 // ── Verb + noun composition ───────────────────────────────────────────────
