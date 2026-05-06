@@ -47,7 +47,18 @@ const XP_REWARDS = {
   lessonComplete: 25,
 } as const;
 
-const LEVEL_THRESHOLDS = [0, 50, 150, 350, 600, 1000, 1500, 2200, 3000, 4000] as const;
+// Generate 100 level thresholds — starts easy, ramps up
+function buildThresholds(): number[] {
+  const t: number[] = [0];
+  let xp = 0;
+  for (let i = 1; i < 100; i++) {
+    const gap = Math.round(30 + i * 18 + i * i * 0.4);
+    xp += gap;
+    t.push(xp);
+  }
+  return t;
+}
+const LEVEL_THRESHOLDS: number[] = buildThresholds();
 
 export function getLevel(xp: number): {
   level: number;
@@ -62,7 +73,7 @@ export function getLevel(xp: number): {
       break;
     }
   }
-  const currentThreshold = LEVEL_THRESHOLDS[level - 1];
+  const currentThreshold = LEVEL_THRESHOLDS[level - 1] ?? 0;
   const nextThreshold = level < LEVEL_THRESHOLDS.length
     ? LEVEL_THRESHOLDS[level]
     : LEVEL_THRESHOLDS[LEVEL_THRESHOLDS.length - 1];
@@ -73,6 +84,47 @@ export function getLevel(xp: number): {
 
   return { level, currentXP: xp, nextLevelXP: nextThreshold, progress };
 }
+
+// ── Level unlocks ────────────────────────────────────────────────────────────
+export interface LevelUnlock {
+  level: number;
+  label: string;
+  icon: string;          // Ionicons name
+  color: string;
+}
+
+export const LEVEL_UNLOCKS: LevelUnlock[] = [
+  { level: 1,  label: "Quick Speak",              icon: "mic-outline",              color: "#A85D2E" },
+  { level: 2,  label: "Daily Challenges",          icon: "calendar-outline",         color: "#7A4EA8" },
+  { level: 3,  label: "Listen & Match",            icon: "headset",                  color: "#C8804A" },
+  { level: 5,  label: "Adventure Stories",          icon: "book-outline",             color: "#3B6B8A" },
+  { level: 7,  label: "Daily Jokes",               icon: "happy-outline",            color: "#5C7A4E" },
+  { level: 10, label: "Custom Orb Skins",          icon: "ellipse-outline",          color: "#D4A017" },
+  { level: 12, label: "Slow Speed Mode",           icon: "speedometer-outline",      color: "#3B82F6" },
+  { level: 15, label: "Streak Freeze",             icon: "snow-outline",             color: "#06B6D4" },
+  { level: 18, label: "Travel Phrase Pack",         icon: "airplane-outline",         color: "#8B5CF6" },
+  { level: 20, label: "2× XP Boost",               icon: "flash-outline",            color: "#F59E0B" },
+  { level: 22, label: "Hint Tokens",               icon: "bulb-outline",             color: "#EAB308" },
+  { level: 25, label: "Food & Dining Pack",         icon: "restaurant-outline",       color: "#EF4444" },
+  { level: 28, label: "Business Phrase Pack",       icon: "briefcase-outline",        color: "#6366F1" },
+  { level: 30, label: "Midnight Theme",            icon: "moon-outline",             color: "#1E293B" },
+  { level: 33, label: "Scholar Badge",             icon: "school-outline",           color: "#7A4A22" },
+  { level: 35, label: "Sphere Doubler",            icon: "layers-outline",           color: "#A85D2E" },
+  { level: 38, label: "Desert Sand Theme",         icon: "sunny-outline",            color: "#D97706" },
+  { level: 40, label: "Polyglot Badge",            icon: "ribbon-outline",           color: "#5C7A4E" },
+  { level: 45, label: "Exclusive World Pack",       icon: "globe-outline",            color: "#7C3AED" },
+  { level: 50, label: "Gold Orb Skin",             icon: "ellipse",                  color: "#D4A017" },
+  { level: 55, label: "Pronunciation Coach AI",    icon: "analytics-outline",        color: "#0EA5E9" },
+  { level: 60, label: "Midnight Orb Skin",         icon: "ellipse",                  color: "#334155" },
+  { level: 65, label: "Cultural Deep Dives",       icon: "compass-outline",          color: "#B45309" },
+  { level: 70, label: "Language Certificate",       icon: "document-text-outline",    color: "#059669" },
+  { level: 75, label: "Immersive Scenarios",        icon: "film-outline",             color: "#DC2626" },
+  { level: 80, label: "Custom TTS Voice",          icon: "mic-circle-outline",       color: "#7C3AED" },
+  { level: 85, label: "Platinum Orb Skin",         icon: "diamond-outline",          color: "#94A3B8" },
+  { level: 90, label: "Master Badge",              icon: "trophy-outline",           color: "#D4A017" },
+  { level: 95, label: "Native Speaker Mode",       icon: "chatbubbles-outline",      color: "#059669" },
+  { level: 100, label: "Grandmaster Title",        icon: "star",                     color: "#F59E0B" },
+];
 
 export async function getXP(): Promise<number> {
   try {
@@ -96,7 +148,7 @@ export async function addXP(
 
   const prev = await getXP();
   const prevLevel = getLevel(prev).level;
-  const newXP = prev + effectiveAmount;
+  const newXP = Math.max(0, prev + effectiveAmount);
   await AsyncStorage.setItem(KEYS.xp, String(newXP));
   const newLevel = getLevel(newXP).level;
   const didLevelUp = newLevel > prevLevel;
@@ -139,6 +191,11 @@ export async function recordAttempt(attempt: Omit<AttemptRecord, "ts">): Promise
   await recomputeConfidence(next);
   const streak = Number((await AsyncStorage.getItem(KEYS.streak)) || 0);
   await awardDrillXP(attempt.score, streak);
+  // Track weekly challenge progress for daily_habit
+  try {
+    const { recordChallengeProgress } = await import("./challenge-store");
+    await recordChallengeProgress("daily_habit");
+  } catch { /* non-fatal */ }
 }
 
 // ── Weak sounds ──────────────────────────────────────────────────────────────

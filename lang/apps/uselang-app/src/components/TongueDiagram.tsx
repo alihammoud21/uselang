@@ -1,27 +1,22 @@
+// ── TONGUE UI SAFETY CONSTRAINTS ──────────────────────────────────────────────
+// The diagram MUST feel: calm, soft, abstract, non-medical
+// FORBIDDEN: realistic anatomy, sharp shapes, high-contrast reds,
+//   detailed textures, anything resembling a real mouth
+// ALLOWED: flat shapes, soft rounded edges, low-contrast colors,
+//   subtle highlights only
+// If design feels "biological" → simplify further
+// ─────────────────────────────────────────────────────────────────────────────
+
 import React from "react";
 import { View, Text } from "react-native";
 import Svg, {
-  Path,
-  Circle,
-  Ellipse,
-  Line,
+  Rect,
   G,
-  Defs,
-  LinearGradient,
-  Stop,
   Text as SvgText,
 } from "react-native-svg";
-import { COLORS } from "@/lib/constants";
 
 // ── Phoneme articulatory data ────────────────────────────────────────────────
-// Each phoneme maps to parameters that drive the SVG diagram.
-// tongueX/Y: tip position (0-1 normalized in mouth cavity)
-// tongueCurve: how arched the tongue body is (0=flat, 1=high arch)
-// lipRoundness: 0=spread, 1=fully rounded
-// lipOpenness: 0=closed, 1=wide open
-// jawOpen: 0=closed, 1=fully open
-// airflow: "oral" | "nasal" | "lateral"
-// voicing: true = vocal cords vibrate
+// tongueX drives zone mapping: ≤0.35 Front, 0.35–0.65 Middle, >0.65 Back
 
 interface PhonemeData {
   tongueX: number;
@@ -122,10 +117,36 @@ export function getRandomPhonemeForLanguage(languageCode: string): string {
   return pool[seededIndex(seed, pool.length)];
 }
 
-// ── Accent colors ────────────────────────────────────────────────────────────
-
+// ── Design tokens (SAFETY: soft, low-contrast, never medical) ────────────────
+const ZONE_ACTIVE_FILL = "rgba(168,93,46,0.12)";
+const ZONE_ACTIVE_BORDER = "rgba(168,93,46,0.25)";
+const ZONE_INACTIVE_BORDER = "rgba(168,93,46,0.10)";
+const OUTLINE_STROKE = "rgba(168,93,46,0.15)";
+const CONTAINER_BG = "#FAF7F2";
 const AMBER_ACCENT = "#A85D2E";
 const AMBER_ACCENT_BG = "rgba(168,93,46,0.10)";
+const LABEL_COLOR = "rgba(168,93,46,0.50)";
+const TIP_COLOR = "#4A3E35";
+
+type TongueZone = "front" | "middle" | "back";
+
+function getActiveZone(tongueX: number): TongueZone {
+  if (tongueX <= 0.35) return "front";
+  if (tongueX <= 0.65) return "middle";
+  return "back";
+}
+
+const ZONE_LABELS: Record<TongueZone, string> = {
+  front: "Front",
+  middle: "Middle",
+  back: "Back",
+};
+
+const ZONE_DESCRIPTIONS: Record<TongueZone, string> = {
+  front: "behind the teeth",
+  middle: "at the palate",
+  back: "near the soft palate",
+};
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -136,296 +157,103 @@ interface TongueDiagramProps {
 
 export function TongueDiagram({ phoneme, size = 160 }: TongueDiagramProps) {
   const data = getPhonemeData(phoneme);
+  const activeZone = getActiveZone(data.tongueX);
   const w = size;
-  const h = size;
-  const sideW = w * 0.58;
-  const frontW = w * 0.38;
+  const h = size * 0.65;
 
-  const cavityLeft = w * 0.15;
-  const cavityRight = w * 0.85;
-  const cavityTop = h * 0.15;
-  const cavityBottom = h * 0.75;
-  const cavityW = cavityRight - cavityLeft;
-  const cavityH = cavityBottom - cavityTop;
-
-  const tipX = cavityLeft + data.tongueX * cavityW;
-  const tipY = cavityTop + data.tongueY * cavityH;
-
-  const tongueStartX = cavityLeft + cavityW * 0.15;
-  const tongueStartY = cavityBottom;
-  const tongueEndX = cavityRight - cavityW * 0.1;
-  const tongueEndY = cavityBottom;
-  const curveHeight = cavityH * (0.3 + data.tongueCurve * 0.5);
-
-  const jawY = cavityBottom + h * (0.05 + data.jawOpen * 0.12);
-
-  const lipTopY = cavityTop - h * 0.02;
-  const lipBottomY = cavityTop + h * (0.08 + data.lipOpenness * 0.15);
-  const lipWidth = w * (0.12 - data.lipRoundness * 0.04);
+  // Zone layout: 3 equal-width zones inside a rounded container
+  const pad = 8;
+  const gap = 5;
+  const containerRx = 18;
+  const zoneW = (w - pad * 2 - gap * 2) / 3;
+  const zoneH = h - pad * 2;
+  const zoneRx = 12;
+  const zones: TongueZone[] = ["front", "middle", "back"];
 
   return (
     <View style={{ alignItems: "center" }}>
       <View
         style={{
-          backgroundColor: "rgba(250, 247, 242, 0.92)",
+          backgroundColor: CONTAINER_BG,
           borderRadius: 24,
           padding: 16,
           alignItems: "center",
         }}
       >
         <Svg width={w} height={h} viewBox={`0 0 ${w} ${h}`}>
-          <Defs>
-            <LinearGradient id="skinGrad" x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0%" stopColor="#fce4c8" />
-              <Stop offset="40%" stopColor="#f5d2af" />
-              <Stop offset="100%" stopColor="#e8bfa0" />
-            </LinearGradient>
-            <LinearGradient id="tongueGrad" x1="0" y1="0" x2="0.3" y2="1">
-              <Stop offset="0%" stopColor="#e85a72" />
-              <Stop offset="50%" stopColor="#d43d58" />
-              <Stop offset="100%" stopColor="#b82e48" />
-            </LinearGradient>
-            <LinearGradient id="cavityGrad" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor="#1e0e16" />
-              <Stop offset="100%" stopColor="#0d0508" />
-            </LinearGradient>
-            <LinearGradient id="lipGrad" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor="#d98a8a" />
-              <Stop offset="100%" stopColor="#c46e72" />
-            </LinearGradient>
-          </Defs>
-
-          {/* Head outline */}
-          <Path
-            d={`M ${sideW * 0.08} ${h * 0.16}
-                Q ${sideW * 0.48} ${h * 0.02} ${sideW * 0.9} ${h * 0.14}
-                L ${sideW * 0.92} ${h * 0.82}
-                Q ${sideW * 0.5} ${h * 0.96} ${sideW * 0.08} ${h * 0.82} Z`}
-            fill="url(#skinGrad)"
-            stroke="#d4a882"
-            strokeWidth={1}
-          />
-
-          {/* Oral cavity */}
-          <Ellipse
-            cx={sideW * 0.5}
-            cy={(cavityTop + cavityBottom) / 2}
-            rx={sideW * 0.32}
-            ry={cavityH * 0.45 + data.jawOpen * cavityH * 0.1}
-            fill="url(#cavityGrad)"
-          />
-
-          {/* Palate */}
-          <Path
-            d={`M ${cavityLeft + cavityW * 0.1} ${cavityTop + cavityH * 0.1}
-                Q ${sideW * 0.5} ${cavityTop - cavityH * 0.1} ${sideW * 0.88} ${cavityTop + cavityH * 0.1}`}
-            fill="none"
-            stroke="#c49a80"
-            strokeWidth={2.5}
-            strokeLinecap="round"
-          />
-
-          {/* Alveolar ridge */}
-          <Circle
-            cx={cavityLeft + cavityW * 0.22}
-            cy={cavityTop + cavityH * 0.08}
-            r={3}
-            fill="#c49a80"
-          />
-
-          {/* Tongue body */}
-          <Path
-            d={`M ${tongueStartX} ${tongueStartY}
-                Q ${tipX} ${tipY - curveHeight * 0.2} ${tipX} ${tipY}
-                Q ${tipX + cavityW * 0.16} ${tipY - curveHeight * 0.1} ${Math.min(tongueEndX, sideW * 0.86)} ${tongueEndY}`}
-            fill="url(#tongueGrad)"
-            stroke="#a82840"
+          {/* Outer silhouette — soft rounded rectangle, NOT a mouth */}
+          <Rect
+            x={1}
+            y={1}
+            width={w - 2}
+            height={h - 2}
+            rx={containerRx}
+            ry={containerRx}
+            fill={CONTAINER_BG}
+            stroke={OUTLINE_STROKE}
             strokeWidth={1.5}
           />
 
-          {/* Tongue tip dot */}
-          <Circle cx={tipX} cy={tipY} r={4} fill="#f06080" stroke="#a82840" strokeWidth={1} />
-
-          {/* Upper lip */}
-          <Ellipse
-            cx={sideW * 0.1}
-            cy={lipTopY}
-            rx={lipWidth}
-            ry={h * 0.035}
-            fill="url(#lipGrad)"
-            stroke="#b56068"
-            strokeWidth={0.5}
-          />
-
-          {/* Lower lip */}
-          <Ellipse
-            cx={sideW * 0.1}
-            cy={lipBottomY}
-            rx={lipWidth * 1.1}
-            ry={h * 0.04}
-            fill="url(#lipGrad)"
-            stroke="#b56068"
-            strokeWidth={0.5}
-          />
-
-          {/* Teeth */}
-          <Line
-            x1={cavityLeft + cavityW * 0.05}
-            y1={cavityTop + cavityH * 0.02}
-            x2={cavityLeft + cavityW * 0.25}
-            y2={cavityTop + cavityH * 0.02}
-            stroke="white"
-            strokeWidth={3}
-            strokeLinecap="round"
-          />
-
-          {/* Nasal airflow indicator */}
-          {data.airflow === "nasal" && (
-            <G>
-              <Path
-                d={`M ${w * 0.5} ${cavityTop - cavityH * 0.05}
-                    L ${w * 0.5} ${h * 0.02}`}
-                stroke={COLORS.accent}
-                strokeWidth={1.5}
-                strokeDasharray="3,3"
-                fill="none"
-              />
-              <Path
-                d={`M ${w * 0.47} ${h * 0.06} L ${w * 0.5} ${h * 0.02} L ${w * 0.53} ${h * 0.06}`}
-                stroke={COLORS.accent}
-                strokeWidth={1.5}
-                fill="none"
-              />
-            </G>
-          )}
-          {/* Oral airflow indicator */}
-          {data.airflow === "oral" && (
-            <G>
-              <Path
-                d={`M ${cavityLeft + cavityW * 0.3} ${(cavityTop + cavityBottom) / 2}
-                    L ${w * 0.05} ${(cavityTop + cavityBottom) / 2}`}
-                stroke={COLORS.accent}
-                strokeWidth={1.5}
-                strokeDasharray="3,3"
-                fill="none"
-              />
-              <Path
-                d={`M ${w * 0.09} ${(cavityTop + cavityBottom) / 2 - 3}
-                    L ${w * 0.05} ${(cavityTop + cavityBottom) / 2}
-                    L ${w * 0.09} ${(cavityTop + cavityBottom) / 2 + 3}`}
-                stroke={COLORS.accent}
-                strokeWidth={1.5}
-                fill="none"
-              />
-            </G>
-          )}
-
-          {/* Voicing indicator */}
-          {data.voicing && (
-            <G>
-              <Ellipse
-                cx={w * 0.65}
-                cy={h * 0.82}
-                rx={8}
-                ry={5}
-                fill="none"
-                stroke={COLORS.gold}
-                strokeWidth={1.5}
-              />
-              <Path
-                d={`M ${w * 0.6} ${h * 0.78} Q ${w * 0.62} ${h * 0.76} ${w * 0.64} ${h * 0.78}`}
-                stroke={COLORS.gold}
-                strokeWidth={1}
-                fill="none"
-              />
-              <Path
-                d={`M ${w * 0.66} ${h * 0.78} Q ${w * 0.68} ${h * 0.76} ${w * 0.7} ${h * 0.78}`}
-                stroke={COLORS.gold}
-                strokeWidth={1}
-                fill="none"
-              />
-            </G>
-          )}
-
-          {/* Front view */}
-          <G x={w - frontW} y={h * 0.16}>
-            <Ellipse
-              cx={frontW * 0.5}
-              cy={h * 0.28}
-              rx={frontW * (0.28 + data.lipRoundness * 0.05)}
-              ry={h * (0.13 + data.lipOpenness * 0.08)}
-              fill="url(#lipGrad)"
-              stroke="#a8565e"
-              strokeWidth={1}
-            />
-            <Ellipse
-              cx={frontW * 0.5}
-              cy={h * 0.28}
-              rx={frontW * (0.2 - data.lipRoundness * 0.06)}
-              ry={h * (0.07 + data.lipOpenness * 0.08)}
-              fill="url(#cavityGrad)"
-            />
-            <Path
-              d={`M ${frontW * 0.24} ${h * 0.24}
-                  Q ${frontW * 0.5} ${h * 0.2} ${frontW * 0.76} ${h * 0.24}`}
-              stroke="#FFFFFF"
-              strokeWidth={3}
-              strokeLinecap="round"
-              fill="none"
-              opacity={data.jawOpen > 0.18 ? 0.95 : 0.35}
-            />
-            <Ellipse
-              cx={frontW * (0.5 + (data.tongueX - 0.5) * 0.28)}
-              cy={h * (0.35 - data.tongueCurve * 0.06)}
-              rx={frontW * 0.2}
-              ry={h * 0.08}
-              fill="url(#tongueGrad)"
-              stroke="#a82840"
-              strokeWidth={1}
-            />
-            <Circle
-              cx={frontW * (0.5 + (data.tongueX - 0.5) * 0.32)}
-              cy={h * (0.31 + (data.tongueY - 0.4) * 0.18)}
-              r={3}
-              fill="#f06080"
-              stroke="#a82840"
-              strokeWidth={0.8}
-            />
-            <SvgText
-              x={frontW * 0.5}
-              y={h * 0.57}
-              fill={COLORS.textMuted}
-              fontSize={Math.max(8, size * 0.055)}
-              fontWeight="700"
-              textAnchor="middle"
-            >
-              FRONT
-            </SvgText>
-          </G>
-          <SvgText
-            x={sideW * 0.5}
-            y={h * 0.92}
-            fill={COLORS.textMuted}
-            fontSize={Math.max(8, size * 0.055)}
-            fontWeight="700"
-            textAnchor="middle"
-          >
-            SIDE
-          </SvgText>
+          {/* 3 zone rectangles */}
+          {zones.map((zone, i) => {
+            const isActive = zone === activeZone;
+            const x = pad + i * (zoneW + gap);
+            return (
+              <G key={zone}>
+                <Rect
+                  x={x}
+                  y={pad}
+                  width={zoneW}
+                  height={zoneH}
+                  rx={zoneRx}
+                  ry={zoneRx}
+                  fill={isActive ? ZONE_ACTIVE_FILL : "transparent"}
+                  stroke={isActive ? ZONE_ACTIVE_BORDER : ZONE_INACTIVE_BORDER}
+                  strokeWidth={isActive ? 1.5 : 1}
+                  strokeDasharray={isActive ? undefined : "4,4"}
+                />
+                <SvgText
+                  x={x + zoneW / 2}
+                  y={pad + zoneH / 2 + 4}
+                  fill={isActive ? AMBER_ACCENT : LABEL_COLOR}
+                  fontSize={Math.max(10, size * 0.07)}
+                  fontWeight={isActive ? "700" : "500"}
+                  textAnchor="middle"
+                >
+                  {ZONE_LABELS[zone]}
+                </SvgText>
+              </G>
+            );
+          })}
         </Svg>
 
-        {/* Tip text */}
+        {/* Tongue zone + description */}
         <Text
           style={{
-            marginTop: 12,
+            marginTop: 10,
             fontSize: 13,
-            color: COLORS.text,
+            color: TIP_COLOR,
             textAlign: "center",
             lineHeight: 19,
-            paddingHorizontal: 8,
             fontWeight: "500",
             letterSpacing: 0.1,
             opacity: 0.85,
+          }}
+        >
+          Tongue: {ZONE_LABELS[activeZone]}, {ZONE_DESCRIPTIONS[activeZone]}
+        </Text>
+
+        {/* Tip text from PHONEME_DB */}
+        <Text
+          style={{
+            marginTop: 4,
+            fontSize: 12,
+            color: TIP_COLOR,
+            textAlign: "center",
+            lineHeight: 17,
+            paddingHorizontal: 8,
+            fontWeight: "400",
+            opacity: 0.65,
           }}
         >
           {data.tip}

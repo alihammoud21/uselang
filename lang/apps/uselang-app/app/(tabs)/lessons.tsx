@@ -221,7 +221,7 @@ export default function LessonsScreen() {
           const langLabel = curriculum.languageLabel;
           const missingParts = [
             !allLangDone  && `${stats.total - stats.completed} lessons left`,
-            !hasCoins     && `need ${1000 - coinBalance} more 🪙`,
+            !hasCoins     && `need ${1000 - coinBalance} more spheres`,
             !hasMissions  && `${2 - completedMissions} weekly mission${completedMissions === 1 ? "" : "s"}`,
           ].filter(Boolean).join(" · ");
           return (
@@ -257,7 +257,7 @@ export default function LessonsScreen() {
               </View>
               {examReady && !examUnlocked && (
                 <View style={S.examCost}>
-                  <Text style={S.examCostText}>🪙 1,000</Text>
+                  <Text style={S.examCostText}>⚪ 1,000</Text>
                 </View>
               )}
               {examReady && examUnlocked && (
@@ -305,54 +305,29 @@ export default function LessonsScreen() {
 
         {/* ── Activity Hub ──────────────────────────────────────────────── */}
         <Text style={[S.sectionLabel, { marginTop: 8, marginBottom: 12 }]}>ACTIVITIES</Text>
-        <View style={{ gap: 10, marginBottom: 32 }}>
-
-          {/* Listen & Match */}
-          <Pressable
-            onPress={() => router.push({ pathname: "/listen-match", params: { lang: langCode } } as any)}
-            style={({ pressed }) => [S.activityCard, { borderColor: "rgba(200,128,74,0.20)" }, pressed && { opacity: 0.85 }]}
-          >
-            <View style={[S.activityIcon, { backgroundColor: "rgba(200,128,74,0.12)" }]}>
-              <Ionicons name="headset" size={22} color={T.amber} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={S.activityTitle}>Listen & Match</Text>
-              <Text style={S.activitySub}>Hear it, then pick the right meaning.</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={T.muted2} />
-          </Pressable>
-
-          {/* Daily Joke */}
-          <Pressable
-            onPress={() => router.push({ pathname: "/jokes", params: { lang: langCode } } as any)}
-            style={({ pressed }) => [S.activityCard, { borderColor: "rgba(74,124,89,0.20)" }, pressed && { opacity: 0.85 }]}
-          >
-            <View style={[S.activityIcon, { backgroundColor: "rgba(74,124,89,0.10)" }]}>
-              <Ionicons name="happy-outline" size={22} color={T.done} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={S.activityTitle}>Daily Joke</Text>
-              <Text style={S.activitySub}>One joke a day keeps the boredom away.</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={T.muted2} />
-          </Pressable>
-
-          {/* Interactive Story */}
-          <Pressable
-            onPress={() => router.push({ pathname: "/story", params: { lang: langCode } } as any)}
-            style={({ pressed }) => [S.activityCard, { borderColor: "rgba(28,23,20,0.12)" }, pressed && { opacity: 0.85 }]}
-          >
-            <View style={[S.activityIcon, { backgroundColor: "rgba(28,23,20,0.06)" }]}>
-              <Ionicons name="book" size={22} color={T.ink2} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={S.activityTitle}>Adventure Story</Text>
-              <Text style={S.activitySub}>Make choices, learn vocab, earn XP.</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={T.muted2} />
-          </Pressable>
-
-        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 18, gap: 10, paddingBottom: 32 }}
+        >
+          {([
+            { label: "Listen & Match", sub: "Hear & pick", icon: "headset" as const, color: T.amber, bg: "rgba(200,128,74,0.12)", border: "rgba(200,128,74,0.20)", route: { pathname: "/listen-match", params: { lang: langCode } } },
+            { label: "Daily Joke", sub: "Laugh & learn", icon: "happy-outline" as const, color: T.done, bg: "rgba(74,124,89,0.10)", border: "rgba(74,124,89,0.20)", route: { pathname: "/jokes", params: { lang: langCode } } },
+            { label: "Adventure", sub: "Story mode", icon: "book" as const, color: T.ink2, bg: "rgba(28,23,20,0.06)", border: "rgba(28,23,20,0.12)", route: { pathname: "/story", params: { lang: langCode } } },
+          ] as const).map((a) => (
+            <Pressable
+              key={a.label}
+              onPress={() => router.push(a.route as any)}
+              style={({ pressed }) => [S.activityCard, { borderColor: a.border }, pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] }]}
+            >
+              <View style={[S.activityIcon, { backgroundColor: a.bg }]}>
+                <Ionicons name={a.icon} size={22} color={a.color} />
+              </View>
+              <Text style={S.activityTitle}>{a.label}</Text>
+              <Text style={S.activitySub}>{a.sub}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
       </ScrollView>
     </SafeAreaView>
   );
@@ -640,15 +615,15 @@ const S = StyleSheet.create({
   examCostText: { fontFamily: F.sansBold, fontSize: 12, color: "#FFF" },
 
   activityCard: {
-    flexDirection: "row", alignItems: "center", gap: 14,
-    backgroundColor: T.card, borderRadius: 16, padding: 16,
+    alignItems: "center", gap: 8, width: 110,
+    backgroundColor: T.card, borderRadius: 18, paddingVertical: 16, paddingHorizontal: 10,
     borderWidth: 0.5,
-    shadowColor: T.ink, shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 6, elevation: 1,
+    shadowColor: T.ink, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
   },
   activityIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center" as const, justifyContent: "center" as const },
-  activityTitle: { fontFamily: F.sansSemi, fontSize: 15, color: T.ink, marginBottom: 2 },
-  activitySub: { fontFamily: F.sans, fontSize: 12, color: T.muted },
+  activityTitle: { fontFamily: F.sansSemi, fontSize: 12, color: T.ink, textAlign: "center" as const },
+  activitySub: { fontFamily: F.sans, fontSize: 10, color: T.muted, textAlign: "center" as const },
 
   funBtn: {
     borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5,

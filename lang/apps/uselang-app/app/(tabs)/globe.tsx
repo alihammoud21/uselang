@@ -227,10 +227,19 @@ export default function GlobeScreen() {
         {/* ── Lesson-unlocked locations ─────────────────────── */}
         {mapLocations.length > 0 && (
           <>
-            <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.textMuted, letterSpacing: 0.9, paddingHorizontal: 22, marginTop: 20, marginBottom: 10 }}>
-              UNLOCKED LOCATIONS
-            </Text>
-            <View style={{ paddingHorizontal: 20 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 22, marginTop: 20, marginBottom: 12 }}>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: COLORS.textMuted, letterSpacing: 0.9 }}>
+                LOCATIONS
+              </Text>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: COLORS.gold }}>
+                {mapLocations.filter(l => (langProgress?.locationTiers[l.id] || "locked") !== "locked").length}/{mapLocations.length} unlocked
+              </Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}
+            >
               {mapLocations.map((loc) => {
                 const tier = langProgress?.locationTiers[loc.id] || "locked";
                 const unlocked = tier !== "locked";
@@ -239,60 +248,60 @@ export default function GlobeScreen() {
                     key={loc.id}
                     onPress={() => unlocked && setTappedLocation({ loc, tier: tier as MapLocationTier })}
                     style={({ pressed }) => ({
+                      width: 140,
                       backgroundColor: unlocked ? COLORS.surface : "rgba(0,0,0,0.02)",
-                      borderRadius: 16,
-                      padding: 16,
-                      marginBottom: 10,
-                      flexDirection: "row",
+                      borderRadius: 20,
+                      paddingVertical: 18,
+                      paddingHorizontal: 14,
                       alignItems: "center",
-                      borderWidth: unlocked ? 1 : 0,
-                      borderColor: TIER_GLOW[tier],
-                      opacity: (unlocked ? 1 : 0.5) * (pressed ? 0.88 : 1),
+                      borderWidth: 1,
+                      borderColor: unlocked ? TIER_GLOW[tier] : "rgba(0,0,0,0.04)",
+                      opacity: (unlocked ? 1 : 0.55) * (pressed ? 0.88 : 1),
                       shadowColor: unlocked ? TIER_TEXT[tier] : "transparent",
-                      shadowOffset: { width: 0, height: 0 },
-                      shadowOpacity: unlocked ? 0.25 : 0,
-                      shadowRadius: unlocked ? 12 : 0,
+                      shadowOffset: { width: 0, height: 3 },
+                      shadowOpacity: unlocked ? 0.2 : 0,
+                      shadowRadius: unlocked ? 10 : 0,
+                      elevation: unlocked ? 3 : 0,
                     })}
                   >
                     <View
                       style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 22,
+                        width: 52,
+                        height: 52,
+                        borderRadius: 26,
                         backgroundColor: unlocked ? TIER_GLOW[tier] : "rgba(0,0,0,0.04)",
                         alignItems: "center",
                         justifyContent: "center",
-                        marginRight: 14,
+                        marginBottom: 10,
                       }}
                     >
-                      <Ionicons
-                        name={(LOCATION_ICONS[loc.locationType] || "location-outline") as any}
-                        size={22}
-                        color={unlocked ? TIER_TEXT[tier] : "#AAA"}
-                      />
+                      {unlocked ? (
+                        <Ionicons
+                          name={(LOCATION_ICONS[loc.locationType] || "location-outline") as any}
+                          size={24}
+                          color={TIER_TEXT[tier]}
+                        />
+                      ) : (
+                        <Ionicons name="lock-closed" size={18} color="#CCC" />
+                      )}
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 15, fontWeight: "700", color: unlocked ? COLORS.text : "#999" }}>
-                        {loc.name}
-                      </Text>
-                      <Text style={{ fontSize: 12, color: COLORS.textSub, marginTop: 2 }}>
-                        {loc.country}
-                      </Text>
-                    </View>
+                    <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: "700", color: unlocked ? COLORS.text : "#999", textAlign: "center" }}>
+                      {loc.name}
+                    </Text>
+                    <Text style={{ fontSize: 11, color: COLORS.textSub, marginTop: 2, textAlign: "center" }}>
+                      {loc.country}
+                    </Text>
                     {unlocked && (
-                      <View style={{ backgroundColor: TIER_GLOW[tier], paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 }}>
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: TIER_TEXT[tier], textTransform: "uppercase" }}>
+                      <View style={{ backgroundColor: TIER_GLOW[tier], paddingHorizontal: 10, paddingVertical: 3, borderRadius: 8, marginTop: 8 }}>
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: TIER_TEXT[tier], textTransform: "uppercase", letterSpacing: 0.6 }}>
                           {tier}
                         </Text>
                       </View>
                     )}
-                    {!unlocked && (
-                      <Ionicons name="lock-closed" size={16} color="#CCC" />
-                    )}
                   </Pressable>
                 );
               })}
-            </View>
+            </ScrollView>
           </>
         )}
 

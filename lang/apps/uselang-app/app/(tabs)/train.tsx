@@ -76,6 +76,7 @@ import { playTutorAudio, playUserAudio, stopTutorAudio, setTutorPlaybackRate } f
 import { speakRoutedText, stopRoutedTts, prefetchDeepgramTts } from "@/lib/tts-router";
 import { prewarmOfflineTts } from "@/lib/offline-tts";
 import { pinyinToSayLike } from "@/lib/gemma-stub";
+import { resolveMandarinLayers } from "@/lib/mandarin-layers";
 import { chatWithGemma } from "@/lib/gemma-engine";
 import { playSound } from "@/lib/sound-manager";
 import { VoiceSpeedControls, type VoiceRate } from "@/components/VoiceSpeedControls";
@@ -85,7 +86,7 @@ import { useOnlineStatus } from "@/lib/use-online";
 import { getUserProfile, type UserProfile } from "@/lib/user-store";
 import { recordAttempt, addWeakSound, addXP } from "@/lib/progress-store";
 import { savePhrase } from "@/lib/phrase-store";
-import { addCoins } from "@/lib/challenge-store";
+import { addCoins, recordChallengeProgress } from "@/lib/challenge-store";
 import { useLocalSearchParams, useFocusEffect, useRouter } from "expo-router";
 import { getTodayTwister, recordDrillAttempt } from "@/lib/daily-challenge";
 import { addTutorSeconds } from "@/lib/usage-store";
@@ -450,28 +451,40 @@ function CompletionOverlay({
           You can now confidently say:
         </Text>
         <View style={{ backgroundColor: "rgba(122,74,34,0.06)", borderRadius: 14, padding: 14, marginBottom: 20, width: "100%" }}>
-          {language.code.startsWith("zh") && phraseSession.fullPhonetic ? (
-            <>
-              <Text style={{ fontFamily: "Geist-Bold", fontSize: 20, color: "#1C1714", textAlign: "center", lineHeight: 28 }}>
-                {pinyinToSayLike(phraseSession.fullPhonetic)}
-              </Text>
-              <Text style={{ fontFamily: "GeistMono-Regular", fontSize: 12, color: "#7A4A22", textAlign: "center", marginTop: 6 }}>
-                {phraseSession.fullPhonetic}
-              </Text>
-              <Text style={{ fontFamily: "Geist-Regular", fontSize: 13, color: "rgba(28,23,20,0.28)", textAlign: "center", marginTop: 4 }}>
-                {phraseSession.fullTarget}
-              </Text>
-            </>
-          ) : (
-            <>
-              <Text style={{ fontFamily: "Fraunces-Regular", fontSize: 18, color: "#1C1714", textAlign: "center", lineHeight: 24 }}>
-                {phraseSession.fullTarget}
-              </Text>
-              <Text style={{ fontFamily: "GeistMono-Regular", fontSize: 11, color: "rgba(122,74,34,0.55)", textAlign: "center", marginTop: 6 }}>
-                {phraseSession.fullPhonetic}
-              </Text>
-            </>
-          )}
+          {(() => {
+            if (language.code.startsWith("zh")) {
+              const layers = resolveMandarinLayers(phraseSession.fullTarget, phraseSession.fullPhonetic);
+              return (
+                <>
+                  <Text style={{ fontFamily: "Geist-Bold", fontSize: 20, color: "#1C1714", textAlign: "center", lineHeight: 28 }}>
+                    {layers.sayLike || layers.hanzi || phraseSession.fullTarget}
+                  </Text>
+                  {layers.pinyin ? (
+                    <Text style={{ fontFamily: "GeistMono-Regular", fontSize: 12, color: "#7A4A22", textAlign: "center", marginTop: 6 }}>
+                      {layers.pinyin}
+                    </Text>
+                  ) : null}
+                  {layers.hanzi ? (
+                    <Text style={{ fontFamily: "Geist-Regular", fontSize: 13, color: "rgba(28,23,20,0.28)", textAlign: "center", marginTop: 4 }}>
+                      {layers.hanzi}
+                    </Text>
+                  ) : null}
+                </>
+              );
+            }
+            return (
+              <>
+                <Text style={{ fontFamily: "Fraunces-Regular", fontSize: 18, color: "#1C1714", textAlign: "center", lineHeight: 24 }}>
+                  {phraseSession.fullTarget}
+                </Text>
+                {phraseSession.fullPhonetic ? (
+                  <Text style={{ fontFamily: "GeistMono-Regular", fontSize: 11, color: "rgba(122,74,34,0.55)", textAlign: "center", marginTop: 6 }}>
+                    {phraseSession.fullPhonetic}
+                  </Text>
+                ) : null}
+              </>
+            );
+          })()}
         </View>
         {/* Chunk stats summary */}
         <View style={{
@@ -632,9 +645,11 @@ function ModeSwitcher({
 function QuickCoachBoard({
   response,
   phoneme,
+  languageCode,
 }: {
   response: TutorResponse;
   phoneme: string;
+  languageCode: string;
 }) {
   const [mouthView, setMouthView] = useState<"side" | "front">("side");
 
@@ -658,14 +673,40 @@ function QuickCoachBoard({
       <Text style={{ fontSize: 10, fontWeight: "800", color: COLORS.gold, letterSpacing: 1.2 }}>
         QUICK COACH
       </Text>
-      <Text style={{ marginTop: 8, fontSize: 20, lineHeight: 26, fontWeight: "800", color: COLORS.text }}>
-        {response.naturalPhrase}
-      </Text>
-      {response.phonetic ? (
-        <Text style={{ marginTop: 3, fontSize: 14, color: COLORS.textSub, fontStyle: "italic" }}>
-          Say it like: {response.phonetic}
-        </Text>
-      ) : null}
+      {(() => {
+        if (languageCode.startsWith("zh")) {
+          const layers = resolveMandarinLayers(response.naturalPhrase, response.phonetic);
+          return (
+            <>
+              <Text style={{ marginTop: 8, fontSize: 20, lineHeight: 26, fontWeight: "800", color: COLORS.text }}>
+                {layers.sayLike || layers.hanzi || response.naturalPhrase}
+              </Text>
+              {layers.pinyin ? (
+                <Text style={{ marginTop: 3, fontSize: 14, color: "#7A4A22", fontFamily: "GeistMono-Regular", letterSpacing: 0.2 }}>
+                  {layers.pinyin}
+                </Text>
+              ) : null}
+              {layers.hanzi ? (
+                <Text style={{ marginTop: 2, fontSize: 13, color: "rgba(28,23,20,0.35)" }}>
+                  {layers.hanzi}
+                </Text>
+              ) : null}
+            </>
+          );
+        }
+        return (
+          <>
+            <Text style={{ marginTop: 8, fontSize: 20, lineHeight: 26, fontWeight: "800", color: COLORS.text }}>
+              {response.naturalPhrase}
+            </Text>
+            {response.phonetic ? (
+              <Text style={{ marginTop: 3, fontSize: 14, color: COLORS.textSub, fontStyle: "italic" }}>
+                Say it like: {response.phonetic}
+              </Text>
+            ) : null}
+          </>
+        );
+      })()}
 
       <View style={{ marginTop: 14 }}>
         <View
@@ -2222,13 +2263,21 @@ export default function TrainScreen() {
         setPhraseCoachingSpeaking(true);
         try {
           const foreignText = res.naturalPhrase || trimmed;
+          // Validate: for zh, foreignText MUST contain Chinese characters.
+          // If it's just English, skip TTS in target language to avoid speaking English as Mandarin.
+          const hasChinese = /[\u4e00-\u9fff]/.test(foreignText);
+          const speakForeign = language.code.startsWith("zh") ? hasChinese : true;
           // Pre-warm Deepgram cache NOW so the foreign phrase plays instantly
           // after the English intro finishes — eliminates the 5-second gap.
-          prefetchDeepgramTts(foreignText, language.code);
-          const introLine = `Let's learn to say: "${trimmed}". In ${language.label}, you say:`;
+          if (speakForeign) prefetchDeepgramTts(foreignText, language.code);
+          const introLine = speakForeign
+            ? `Let's learn to say: "${trimmed}". In ${language.label}, you say:`
+            : `Let's learn to say: "${trimmed}".`;
           await speakRoutedText({ text: introLine, languageCode: nativeCode });
-          await new Promise((r) => setTimeout(r, 150));
-          await speakRoutedText({ text: foreignText, languageCode: language.code });
+          if (speakForeign) {
+            await new Promise((r) => setTimeout(r, 150));
+            await speakRoutedText({ text: foreignText, languageCode: language.code });
+          }
         } catch {}
         setPhraseCoachingSpeaking(false);
         // Advance from intro → practicing
@@ -2501,6 +2550,11 @@ export default function TrainScreen() {
                 score: Math.round(fb.score * 100),
                 mode: "train",
               });
+              // Track weekly challenge progress
+              await recordChallengeProgress("speak_phrases");
+              if (Math.round(fb.score * 100) >= 90) {
+                await recordChallengeProgress("precision_drill");
+              }
             } catch (e) {
               console.warn("[phrase] XP/save error:", e);
             }

@@ -50,7 +50,8 @@ import Animated, {
 import { COLORS, SUPPORTED_LANGUAGES } from "@/lib/constants";
 import { postTutorSession, type TutorAudioSegment, type TutorResponse } from "@/lib/tutor-api";
 import { playTutorAudio, stopTutorAudio } from "@/lib/tutor-audio";
-import { pinyinToSayLike, stripQuestionWrapper } from "@/lib/gemma-stub";
+import { pinyinToSayLike, stripQuestionWrapper, lookupChinesePinyin } from "@/lib/gemma-stub";
+import { resolveMandarinLayers } from "@/lib/mandarin-layers";
 import { AnimatedMouth } from "@/components/AnimatedMouth";
 import { SphereOrb } from "@/components/SphereOrb";
 import { getUserProfile } from "@/lib/user-store";
@@ -61,6 +62,7 @@ import { speakRoutedText, stopRoutedTts } from "@/lib/tts-router";
 import { prewarmOfflineTts } from "@/lib/offline-tts";
 import { TongueDiagram } from "@/components/TongueDiagram";
 import { addXP } from "@/lib/progress-store";
+import { recordChallengeProgress } from "@/lib/challenge-store";
 import { hasSlowSpeed } from "@/lib/shop-store";
 import { VoiceSpeedControls, type VoiceRate } from "@/components/VoiceSpeedControls";
 import { setTutorPlaybackRate } from "@/lib/tutor-audio";
@@ -480,6 +482,7 @@ export default function QuickSessionScreen() {
         if (!xpAwardedRef.current) {
           xpAwardedRef.current = true;
           addXP(25).catch(() => {});
+          recordChallengeProgress("speak_phrases").catch(() => {});
           handleSave();
         }
         setAiState("speaking");
@@ -864,28 +867,36 @@ export default function QuickSessionScreen() {
                 </View>
                 {/* For Mandarin: say-it-like as PRIMARY, pinyin secondary, characters tertiary.
                     For all other languages: phrase primary, phonetic always shown below. */}
-                {learnLang.startsWith("zh") ? (
-                  <>
-                    <Text style={qStyles.keyPhrase}>
-                      {response.phonetic ? pinyinToSayLike(response.phonetic) : response.naturalPhrase}
-                    </Text>
-                    {response.phonetic ? (
-                      <Text style={[qStyles.keyPhonetic, { fontSize: 15, color: "#7A4A22", marginTop: 6 }]}>
-                        {response.phonetic}
+                {(() => {
+                  if (learnLang.startsWith("zh")) {
+                    const layers = resolveMandarinLayers(response.naturalPhrase, response.phonetic);
+                    return (
+                      <>
+                        <Text style={qStyles.keyPhrase}>
+                          {layers.sayLike || layers.hanzi || response.naturalPhrase}
+                        </Text>
+                        {layers.pinyin ? (
+                          <Text style={[qStyles.keyPhonetic, { fontSize: 15, color: "#7A4A22", marginTop: 6 }]}>
+                            {layers.pinyin}
+                          </Text>
+                        ) : null}
+                        {layers.hanzi ? (
+                          <Text style={{ fontSize: 16, color: "rgba(28,23,20,0.28)", marginTop: 4, fontFamily: "Geist-Regular" }}>
+                            {layers.hanzi}
+                          </Text>
+                        ) : null}
+                      </>
+                    );
+                  }
+                  return (
+                    <>
+                      <Text style={qStyles.keyPhrase}>{response.naturalPhrase}</Text>
+                      <Text style={qStyles.keyPhonetic}>
+                        {response.phonetic ? `Say it like: ${response.phonetic}` : "Tap the orb to hear pronunciation"}
                       </Text>
-                    ) : null}
-                    <Text style={{ fontSize: 16, color: "rgba(28,23,20,0.28)", marginTop: 4, fontFamily: "Geist-Regular" }}>
-                      {response.naturalPhrase}
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={qStyles.keyPhrase}>{response.naturalPhrase}</Text>
-                    <Text style={qStyles.keyPhonetic}>
-                      {response.phonetic ? `Say it like: ${response.phonetic}` : "Tap the orb to hear pronunciation"}
-                    </Text>
-                  </>
-                )}
+                    </>
+                  );
+                })()}
                 {(() => {
                   const raw = response.pronunciationTip || response.context;
                   const isDebug = raw?.startsWith("(Translated by") || raw?.startsWith("Translated from");
@@ -930,6 +941,104 @@ export default function QuickSessionScreen() {
                       </View>
                     );
                   })}
+                </View>
+              </AnimatedView>
+            ) : null}
+
+            {/* ── Tappable target word chips — ALWAYS visible ─────────── */}
+            {response.naturalPhrase ? (
+              <AnimatedView entering={FadeInUp.delay(240).duration(280).easing(Easing.out(Easing.cubic))}>
+                <View style={qStyles.targetChipsCard}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 7, marginBottom: 12 }}>
+                    <Ionicons name="mic-outline" size={15} color={SESSION.amber} />
+                    <Text style={qStyles.keyConceptEyebrow}>TARGET PHRASE</Text>
+                    {feedback && (
+                      <View style={{ marginLeft: "auto", backgroundColor: (feedback.score >= 0.72 ? "rgba(34,197,94,0.12)" : feedback.score >= 0.45 ? "rgba(168,93,46,0.12)" : "rgba(239,68,68,0.12)"), paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                        <Text style={{ fontSize: 11, fontWeight: "800", color: feedback.score >= 0.72 ? "#1A7A3C" : feedback.score >= 0.45 ? "#7A4A22" : "#C53030" }}>
+                          {Math.round(feedback.score * 100)}%
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                    {(() => {
+                      const isZh = learnLang.startsWith("zh");
+                      // Split phrase into words (characters for CJK)
+                      const words = isZh
+                        ? (response.naturalPhrase || "").replace(/[，。？！、\s]/g, "").split("")
+                        : (response.naturalPhrase || "").split(/\s+/).filter(Boolean);
+                      // Build word match map from feedback (if available)
+                      const matchMap = new Map<number, WordMatch>();
+                      if (feedback?.wordMatches) {
+                        feedback.wordMatches.forEach((wm, idx) => matchMap.set(idx, wm));
+                      }
+                      return words.map((word, i) => {
+                        const wm = matchMap.get(i);
+                        const hasResult = !!feedback;
+                        // Colors: neutral before attempt, green/amber/red after
+                        const bgColor = !hasResult ? "rgba(28,23,20,0.04)"
+                          : wm?.status === "matched" ? "rgba(34,197,94,0.12)"
+                          : wm?.status === "partial" ? "rgba(168,93,46,0.12)"
+                          : "rgba(239,68,68,0.12)";
+                        const borderCol = !hasResult ? "rgba(28,23,20,0.10)"
+                          : wm?.status === "matched" ? "rgba(34,197,94,0.30)"
+                          : wm?.status === "partial" ? "rgba(168,93,46,0.30)"
+                          : "rgba(239,68,68,0.30)";
+                        const textColor = !hasResult ? SESSION.ink
+                          : wm?.status === "matched" ? "#1A7A3C"
+                          : wm?.status === "partial" ? "#7A4A22"
+                          : "#C53030";
+                        const iconBg = !hasResult ? "rgba(28,23,20,0.06)" : textColor + "18";
+                        // Pinyin for Mandarin characters
+                        const charPin = isZh ? lookupChinesePinyin(word) : "";
+                        return (
+                          <Pressable
+                            key={`tc-${word}-${i}`}
+                            onPress={() => {
+                              speakRoutedText({ text: word, languageCode: learnLang, rate: 0.75 }).catch(() => {});
+                            }}
+                            style={({ pressed }) => ({
+                              flexDirection: "column", alignItems: "center",
+                              backgroundColor: bgColor, borderRadius: 10,
+                              borderWidth: 1, borderColor: borderCol,
+                              paddingHorizontal: 10, paddingVertical: 7,
+                              gap: isZh ? 2 : 5, opacity: pressed ? 0.7 : 1,
+                              minWidth: isZh ? 48 : undefined,
+                            })}
+                          >
+                            {isZh && charPin ? (
+                              <Text style={{ fontSize: 11, fontWeight: "600", color: textColor, opacity: 0.7 }}>
+                                {charPin}
+                              </Text>
+                            ) : null}
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                              <Text style={{ fontSize: 17, fontWeight: "700", color: textColor }}>
+                                {word}
+                              </Text>
+                              <View style={{
+                                width: 22, height: 22, borderRadius: 11,
+                                backgroundColor: iconBg,
+                                alignItems: "center", justifyContent: "center",
+                              }}>
+                                <Ionicons name="volume-medium" size={12} color={textColor} />
+                              </View>
+                              {hasResult && wm?.status === "matched" && (
+                                <Ionicons name="checkmark" size={13} color={textColor} style={{ opacity: 0.7 }} />
+                              )}
+                              {hasResult && wm?.status === "missed" && (
+                                <Ionicons name="close" size={13} color={textColor} style={{ opacity: 0.7 }} />
+                              )}
+                            </View>
+                          </Pressable>
+                        );
+                      });
+                    })()}
+                  </View>
+                  {!feedback && (
+                    <Text style={{ fontSize: 11, color: SESSION.muted, marginTop: 8 }}>
+                      Tap each word to hear it. Then tap the orb and say the full phrase!
+                    </Text>
+                  )}
                 </View>
               </AnimatedView>
             ) : null}
@@ -1118,22 +1227,21 @@ export default function QuickSessionScreen() {
                             <Text style={{ fontSize: 16, fontWeight: "700", color: textColor }}>
                               {wm.word}
                             </Text>
-                            {wm.status === "missed" || wm.status === "partial" ? (
-                              <Pressable
-                                hitSlop={6}
-                                onPress={() => {
-                                  speakRoutedText({ text: wm.word, languageCode: learnLang, rate: 0.75 }).catch(() => {});
-                                }}
-                                style={({ pressed }) => ({
-                                  width: 22, height: 22, borderRadius: 11,
-                                  backgroundColor: textColor + "18",
-                                  alignItems: "center", justifyContent: "center",
-                                  opacity: pressed ? 0.7 : 1,
-                                })}
-                              >
-                                <Ionicons name="volume-medium" size={12} color={textColor} />
-                              </Pressable>
-                            ) : (
+                            <Pressable
+                              hitSlop={6}
+                              onPress={() => {
+                                speakRoutedText({ text: wm.word, languageCode: learnLang, rate: 0.75 }).catch(() => {});
+                              }}
+                              style={({ pressed }) => ({
+                                width: 22, height: 22, borderRadius: 11,
+                                backgroundColor: textColor + "18",
+                                alignItems: "center", justifyContent: "center",
+                                opacity: pressed ? 0.7 : 1,
+                              })}
+                            >
+                              <Ionicons name="volume-medium" size={12} color={textColor} />
+                            </Pressable>
+                            {wm.status === "matched" && (
                               <Ionicons name="checkmark" size={13} color={textColor} style={{ opacity: 0.7 }} />
                             )}
                           </View>
@@ -1558,6 +1666,21 @@ const qStyles = {
     fontSize: 14,
     color: SESSION.muted,
     flex: 1,
+  },
+  // ── Target word chips card ──────────────────────────────────────────
+  targetChipsCard: {
+    backgroundColor: SESSION.card,
+    borderRadius: 22,
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: SESSION.hair,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
+    marginBottom: 22,
   },
   // ── Feedback card ──────────────────────────────────────────────────
   feedbackCard: {

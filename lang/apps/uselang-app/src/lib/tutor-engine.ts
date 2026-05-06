@@ -603,10 +603,13 @@ export function phraseScoreScenario(session: PhraseSession, score: number): Phra
 }
 
 export function phraseAdvanceFromRemediate(session: PhraseSession): PhraseSession {
-  // Find the weakest chunk (lowest score) and loop the user back to practice it
-  let weakestIdx = 0;
+  // NEVER go backwards. Find the weakest chunk AT OR AFTER the current index.
+  // If all chunks behind us are weak, still don't go back — re-practice
+  // from current position forward only.
+  const current = session.currentChunkIndex;
+  let weakestIdx = current;
   let weakestScore = Infinity;
-  for (let i = 0; i < session.chunks.length; i++) {
+  for (let i = current; i < session.chunks.length; i++) {
     const s = session.chunkScores[i] ?? 0;
     if (s < weakestScore) {
       weakestScore = s;
@@ -637,11 +640,18 @@ export function phraseScoreChunk(
   mastered[chunkIndex] = scores[chunkIndex]! >= PHRASE_MASTERY_THRESHOLD;
 
   const allMastered = mastered.every(Boolean);
-  const nextIndex = mastered[chunkIndex]
-    ? mastered.findIndex((m, i) => !m && i > chunkIndex) !== -1
-      ? mastered.findIndex((m, i) => !m && i > chunkIndex)
-      : allMastered ? session.chunks.length : session.currentChunkIndex
-    : chunkIndex;
+
+  // NEVER go backwards. If the user fails a chunk, stay on that chunk.
+  // If they master it, advance forward-only to the next unmastered chunk.
+  let nextIndex: number;
+  if (!mastered[chunkIndex]) {
+    // Failed → retry same chunk
+    nextIndex = chunkIndex;
+  } else {
+    // Mastered → find next unmastered chunk AFTER current (forward-only)
+    const nextUnmastered = mastered.findIndex((m, i) => !m && i > chunkIndex);
+    nextIndex = nextUnmastered !== -1 ? nextUnmastered : chunkIndex;
+  }
 
   return {
     ...session,

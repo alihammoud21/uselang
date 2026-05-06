@@ -763,6 +763,63 @@ const CURATED: { match: (s: string) => boolean; byLang: LangMap }[] = [
       },
     },
   },
+  // introduce myself / my name is
+  {
+    match: (s) => /\bintroduce\b|\bmy name\b|\bname is\b/i.test(s),
+    byLang: {
+      zh: {
+        phrase: "我叫…",
+        phonetic: "wǒ jiào…",
+        meaning: "My name is…",
+        context: "The standard way to introduce yourself in Mandarin. Fill in your name after 叫.",
+        pronunciationTip: "Say it like: woh jyow. '叫' uses a falling tone — let your voice drop sharply.",
+        articulation: {
+          tonguePlacement: "Tongue mid for 'wǒ'; blade up behind teeth for 'jiào'.",
+          lipShape: "Rounded for 'wǒ', open for 'jiào'.",
+          airflow: "Voiced. The 'j' is like the 'j' in 'jeep' but softer.",
+          stress: "Third tone on 我 (dip then rise), fourth tone on 叫 (sharp drop).",
+        },
+        chunks: [
+          { target: "我", english: "I / me", phonetic: "wǒ", tip: "Third tone: dip down low then rise — like asking 'huh?'" },
+          { target: "叫", english: "am called", phonetic: "jiào", tip: "Fourth tone: drop sharply like saying 'No!'. The 'j' is softer than English." },
+        ],
+      },
+      es: {
+        phrase: "Me llamo…",
+        phonetic: "meh YAH-moh",
+        meaning: "My name is…",
+        context: "The standard way to introduce yourself. Add your name after 'llamo'.",
+        pronunciationTip: "'Ll' sounds like 'y' in most Latin American Spanish.",
+        articulation: {
+          tonguePlacement: "Tongue relaxed for 'me', up behind teeth for 'll'.",
+          lipShape: "Relaxed, slightly open throughout.",
+          airflow: "Voiced and smooth.",
+          stress: "Stress on YAH — meh YAH-moh.",
+        },
+        chunks: [
+          { target: "Me", english: "myself", phonetic: "meh", tip: "Short and unstressed" },
+          { target: "llamo", english: "I call / I am called", phonetic: "YAH-moh", tip: "'Ll' sounds like 'y' in Latin American Spanish" },
+        ],
+      },
+      fr: {
+        phrase: "Je m'appelle…",
+        phonetic: "zhuh ma-PEL",
+        meaning: "My name is…",
+        context: "Standard self-introduction in French. Add your name at the end.",
+        pronunciationTip: "The 'je' sounds like 'zhuh' — soft 'j' like in 'pleasure'.",
+        articulation: {
+          tonguePlacement: "Tongue mid for 'je'; tip touches behind teeth for 'l' in 'appelle'.",
+          lipShape: "Rounded forward for 'je', relaxed for 'appelle'.",
+          airflow: "Voiced throughout. The 'r' is gentle.",
+          stress: "Light stress on the last syllable: ma-PEL.",
+        },
+        chunks: [
+          { target: "Je", english: "I", phonetic: "zhuh", tip: "Soft 'j' — like the 's' in 'pleasure'" },
+          { target: "m'appelle", english: "am called", phonetic: "ma-PEL", tip: "The apostrophe links 'me' and 'appelle'" },
+        ],
+      },
+    },
+  },
 ];
 
 // ── Generic fallback ───────────────────────────────────────────────────────
@@ -1046,23 +1103,43 @@ function genericEntry(targetLang: string, userPhrase: string): StubEntry {
     };
   }
 
-  const fallbackPhrase = SAFE_PRACTICE_PHRASES[code];
-  if (fallbackPhrase) {
+  // translateLine failed — try composeLocalTranslation (word-by-word EN→target)
+  // This handles "I love you" → "我爱你", "can I learn math" → "可以我学数学", etc.
+  if (cleaned) {
+    try {
+      const composed = composeLocalTranslation(cleaned, code);
+      if (composed && composed.phrase) {
+        return {
+          phrase: composed.phrase,
+          phonetic: composed.phonetic,
+          meaning: cleaned,
+          context: `Try saying it slowly, one syllable at a time.`,
+          pronunciationTip: "Listen carefully and repeat after the tutor.",
+          articulation: defaultArt,
+          chunks: composed.chunks,
+        };
+      }
+    } catch { /* ignore */ }
+  }
+
+  // When all translation methods fail, use a SAFE_PRACTICE_PHRASE in the target
+  // language so the user NEVER sees English echoed as a "translation".
+  const safe = SAFE_PRACTICE_PHRASES[code];
+  if (safe) {
     return {
-      phrase: fallbackPhrase.phrase,
-      phonetic: fallbackPhrase.phonetic,
-      meaning: fallbackPhrase.meaning,
-      context: `I couldn't translate that exactly, but here's a useful ${langLabel} phrase to practice instead.`,
+      phrase: safe.phrase,
+      phonetic: safe.phonetic,
+      meaning: safe.meaning,
+      context: `This phrase is useful while we prepare your translation. Try practicing it!`,
       pronunciationTip: "Listen carefully and repeat after the tutor.",
       articulation: defaultArt,
     };
   }
-
   return {
-    phrase: cleaned || "(unknown)",
+    phrase: "(translation unavailable)",
     phonetic: "",
     meaning: cleaned || "Unknown phrase",
-    context: `Practice makes perfect!`,
+    context: `Translation is not available right now. Please try again.`,
     pronunciationTip: "Listen carefully and repeat after the tutor.",
     articulation: defaultArt,
   };
@@ -1133,7 +1210,7 @@ const VERB_PATTERNS: VerbPattern[] = [
   {
     match: /\bi\s+(?:really\s+)?love\s+(.+)/i,
     verbs: {
-      zh: { phrase: "我喜欢", phonetic: "wǒ xǐhuān", sayLike: "woh shee-hwahn" },
+      zh: { phrase: "我爱", phonetic: "wǒ ài", sayLike: "woh eye" },
       es: { phrase: "Me encanta", phonetic: "meh en-KAHN-tah", sayLike: "meh en-KAHN-tah" },
       fr: { phrase: "J'adore", phonetic: "zha-DOR", sayLike: "zha-DOR" },
       de: { phrase: "Ich liebe", phonetic: "ikh LEE-buh", sayLike: "ikh LEE-buh" },
@@ -1227,6 +1304,19 @@ interface NounEntry {
 // collapses inner whitespace before lookup.
 const NOUNS: Record<string, Record<string, NounEntry>> = {
   zh: {
+    you: { word: "你", phonetic: "nǐ", sayLike: "nee" },
+    him: { word: "他", phonetic: "tā", sayLike: "tah" },
+    her: { word: "她", phonetic: "tā", sayLike: "tah" },
+    it: { word: "它", phonetic: "tā", sayLike: "tah" },
+    them: { word: "他们", phonetic: "tāmen", sayLike: "tah-men" },
+    us: { word: "我们", phonetic: "wǒmen", sayLike: "woh-men" },
+    this: { word: "这个", phonetic: "zhège", sayLike: "juh-guh" },
+    that: { word: "那个", phonetic: "nàge", sayLike: "nah-guh" },
+    everything: { word: "一切", phonetic: "yīqiè", sayLike: "yee-chyeh" },
+    something: { word: "东西", phonetic: "dōngxi", sayLike: "dong-shee" },
+    china: { word: "中国", phonetic: "zhōngguó", sayLike: "johng-gwoh" },
+    chinese: { word: "中文", phonetic: "zhōngwén", sayLike: "johng-wen" },
+    math: { word: "数学", phonetic: "shùxué", sayLike: "shoo-shweh" },
     pizza: { word: "披萨", phonetic: "pīsà", sayLike: "pee-sah" },
     coffee: { word: "咖啡", phonetic: "kāfēi", sayLike: "kah-fay" },
     tea: { word: "茶", phonetic: "chá", sayLike: "chah" },
@@ -1278,6 +1368,17 @@ const NOUNS: Record<string, Record<string, NounEntry>> = {
     "ice cream": { word: "冰淇淋", phonetic: "bīngqílín", sayLike: "bing-chee-lin" },
   },
   es: {
+    you: { word: "ti", phonetic: "TEE", sayLike: "TEE" },
+    him: { word: "él", phonetic: "EL", sayLike: "EL" },
+    her: { word: "ella", phonetic: "EH-yah", sayLike: "EH-yah" },
+    it: { word: "eso", phonetic: "EH-soh", sayLike: "EH-soh" },
+    them: { word: "ellos", phonetic: "EH-yos", sayLike: "EH-yohs" },
+    us: { word: "nosotros", phonetic: "noh-SOH-tros", sayLike: "noh-SOH-trohs" },
+    this: { word: "esto", phonetic: "EH-stoh", sayLike: "EH-stoh" },
+    that: { word: "eso", phonetic: "EH-soh", sayLike: "EH-soh" },
+    everything: { word: "todo", phonetic: "TOH-doh", sayLike: "TOH-doh" },
+    something: { word: "algo", phonetic: "AHL-goh", sayLike: "AHL-goh" },
+    math: { word: "matemáticas", phonetic: "mah-teh-MAH-tee-kahs", sayLike: "mah-teh-MAH-tee-kahs" },
     pizza: { word: "pizza", phonetic: "PEET-zah", sayLike: "PEET-sah" },
     coffee: { word: "un café", phonetic: "oon kah-FEH", sayLike: "oon kah-FEH" },
     tea: { word: "un té", phonetic: "oon TEH", sayLike: "oon TEH" },
@@ -1316,6 +1417,17 @@ const NOUNS: Record<string, Record<string, NounEntry>> = {
     phone: { word: "un teléfono", phonetic: "oon teh-LEH-fo-no", sayLike: "oon teh-LEH-foh-noh" },
   },
   fr: {
+    you: { word: "toi", phonetic: "TWAH", sayLike: "TWAH" },
+    him: { word: "lui", phonetic: "LWEE", sayLike: "LWEE" },
+    her: { word: "elle", phonetic: "EL", sayLike: "EL" },
+    it: { word: "ça", phonetic: "SAH", sayLike: "SAH" },
+    them: { word: "eux", phonetic: "UH", sayLike: "UH" },
+    us: { word: "nous", phonetic: "NOO", sayLike: "NOO" },
+    this: { word: "ceci", phonetic: "suh-SEE", sayLike: "suh-SEE" },
+    that: { word: "cela", phonetic: "suh-LAH", sayLike: "suh-LAH" },
+    everything: { word: "tout", phonetic: "TOO", sayLike: "TOO" },
+    something: { word: "quelque chose", phonetic: "kel-kuh SHOHZ", sayLike: "kel-kuh SHOHZ" },
+    math: { word: "les maths", phonetic: "lay MAHT", sayLike: "lay MAHT" },
     pizza: { word: "une pizza", phonetic: "ün peed-ZAH", sayLike: "uhn peed-ZAH" },
     coffee: { word: "un café", phonetic: "uhn ka-FAY", sayLike: "uhn kah-FAY" },
     tea: { word: "un thé", phonetic: "uhn TAY", sayLike: "uhn TAY" },
@@ -1615,16 +1727,14 @@ export function stubChat(messages: ChatMessage[]): string {
         const hasCJK = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(result);
         const startsDigit = /^\d/.test(result);
         if (!hasCJK || startsDigit) {
-          // Garbage — return safe practice phrase for the target language
-          const safe = SAFE_PRACTICE_PHRASES[targetCode.slice(0, 2)];
-          return safe ? safe.phrase : "";
+          // Garbage — return empty so caller can try Gemma or other fallback
+          return "";
         }
       }
       return result;
     }
-    // Empty result — return the safe practice phrase so we never echo source text
-    const safe = SAFE_PRACTICE_PHRASES[targetCode.slice(0, 2)];
-    return safe ? safe.phrase : user.trim();
+    // Empty result — return empty so caller can try Gemma or other fallback
+    return "";
   }
 
   // Default: tutor-style chat, condensed to one line.
@@ -1656,7 +1766,7 @@ const TRANSLATE_DICT: Record<string, Record<string, string>> = (() => {
   return out;
 })();
 
-function translateLine(text: string, sourceCode: string, targetCode: string): string {
+export function translateLine(text: string, sourceCode: string, targetCode: string): string {
   const trimmed = text.trim();
   if (!trimmed) return "";
   // If the source and target match, just echo cleanly.
@@ -1748,11 +1858,94 @@ const WORD_TABLE_ZH_EN: Record<string, string> = {
   "今天的": "today's",
   "明天的": "tomorrow's",
   "你好": "hello",
+  "你好吗": "how are you",
+  "我很好": "I'm good",
+  "你呢": "and you",
+  "不客气": "you're welcome",
+  "没关系": "it doesn't matter",
   "再见": "goodbye",
   "谢谢": "thank you",
+  "谢谢你": "thank you",
   "对不起": "sorry",
   "请": "please",
   "好的": "okay",
+  "好吧": "alright",
+  "知道": "know",
+  "不知道": "don't know",
+  "我不知道": "I don't know",
+  "明白": "understand",
+  "不明白": "don't understand",
+  "我不明白": "I don't understand",
+  "我不懂": "I don't understand",
+  "等一下": "wait a moment",
+  "慢慢": "slowly",
+  "快": "fast",
+  "慢": "slow",
+  "多少": "how much / how many",
+  "多少钱": "how much does it cost",
+  "太贵了": "too expensive",
+  "便宜": "cheap",
+  "可以": "can / may",
+  "不可以": "cannot",
+  "喜欢": "like",
+  "不喜欢": "don't like",
+  "我喜欢": "I like",
+  "爱": "love",
+  "我爱你": "I love you",
+  "吃饭": "eat (a meal)",
+  "喝水": "drink water",
+  "好吃": "delicious",
+  "很好吃": "very delicious",
+  "漂亮": "beautiful",
+  "很漂亮": "very beautiful",
+  "太好了": "great / wonderful",
+  "什么": "what",
+  "谁": "who",
+  "哪里": "where",
+  "为什么": "why",
+  "怎么": "how",
+  "什么时候": "when",
+  "这个": "this",
+  "那个": "that",
+  "这里": "here",
+  "那里": "there",
+  "大": "big",
+  "小": "small",
+  "多": "many / much",
+  "少": "few / little",
+  "新": "new",
+  "旧": "old (things)",
+  "高兴": "happy",
+  "很高兴": "very happy",
+  "开心": "happy",
+  "难过": "sad",
+  "生气": "angry",
+  "累": "tired",
+  "我累了": "I'm tired",
+  "饿": "hungry",
+  "我饿了": "I'm hungry",
+  "渴": "thirsty",
+  "我渴了": "I'm thirsty",
+  "工作": "work",
+  "休息": "rest",
+  "睡觉": "sleep",
+  "起床": "get up",
+  "走": "walk / go",
+  "走吧": "let's go",
+  "我们走吧": "let's go",
+  "等等": "wait",
+  "帮忙": "help",
+  "帮我": "help me",
+  "没问题": "no problem",
+  "当然": "of course",
+  "真的吗": "really?",
+  "是的": "yes",
+  "对": "correct / right",
+  "不对": "incorrect / wrong",
+  "叫": "called",
+  "我叫": "my name is",
+  "名字": "name",
+  "你叫什么名字": "what is your name",
 };
 
 const WORD_TABLE_FR_EN: Record<string, string> = {
@@ -2200,7 +2393,40 @@ const EN_WORDS: Record<string, WordEntry> = {
   house:    { zh:"房子",zhPin:"fángzi",es:"casa",    fr:"maison" },
   room:     { zh:"房间",zhPin:"fángjiān",es:"habitación",fr:"chambre" },
   toilet:   { zh:"厕所",zhPin:"cèsuǒ",es:"baño",   fr:"toilettes" },
+  // Modal verbs
+  can:     { zh:"可以",zhPin:"kěyǐ",  es:"poder",    fr:"pouvoir" },
+  could:   { zh:"可以",zhPin:"kěyǐ",  es:"podría",   fr:"pourrait" },
+  should:  { zh:"应该",zhPin:"yīnggāi",es:"debería",  fr:"devrait" },
+  would:   { zh:"会",  zhPin:"huì",   es:"haría",    fr:"ferait" },
+  will:    { zh:"会",  zhPin:"huì",   es:"va a",     fr:"va" },
+  must:    { zh:"必须",zhPin:"bìxū",  es:"debe",     fr:"doit" },
   // Common verbs (infinitive / base)
+  learn:   { zh:"学",  zhPin:"xué",   es:"aprender", fr:"apprendre" },
+  teach:   { zh:"教",  zhPin:"jiāo",  es:"enseñar",  fr:"enseigner" },
+  read:    { zh:"读",  zhPin:"dú",    es:"leer",     fr:"lire" },
+  write:   { zh:"写",  zhPin:"xiě",   es:"escribir", fr:"écrire" },
+  think:   { zh:"想",  zhPin:"xiǎng", es:"pensar",   fr:"penser" },
+  make:    { zh:"做",  zhPin:"zuò",   es:"hacer",    fr:"faire" },
+  do_v:    { zh:"做",  zhPin:"zuò",   es:"hacer",    fr:"faire" },
+  give:    { zh:"给",  zhPin:"gěi",   es:"dar",      fr:"donner" },
+  take:    { zh:"拿",  zhPin:"ná",    es:"tomar",    fr:"prendre" },
+  get:     { zh:"得到",zhPin:"dédào", es:"obtener",  fr:"obtenir" },
+  try:     { zh:"试",  zhPin:"shì",   es:"intentar", fr:"essayer" },
+  use:     { zh:"用",  zhPin:"yòng",  es:"usar",     fr:"utiliser" },
+  ask:     { zh:"问",  zhPin:"wèn",   es:"preguntar",fr:"demander" },
+  tell:    { zh:"告诉",zhPin:"gàosù", es:"decir",    fr:"dire" },
+  show:    { zh:"给看",zhPin:"gěi kàn",es:"mostrar", fr:"montrer" },
+  put:     { zh:"放",  zhPin:"fàng",  es:"poner",    fr:"mettre" },
+  send:    { zh:"发送",zhPin:"fāsòng",es:"enviar",   fr:"envoyer" },
+  bring:   { zh:"带来",zhPin:"dài lái",es:"traer",   fr:"apporter" },
+  start:   { zh:"开始",zhPin:"kāishǐ",es:"empezar", fr:"commencer" },
+  stop:    { zh:"停",  zhPin:"tíng",  es:"parar",    fr:"arrêter" },
+  change:  { zh:"换",  zhPin:"huàn",  es:"cambiar",  fr:"changer" },
+  cook:    { zh:"做饭",zhPin:"zuòfàn",es:"cocinar",  fr:"cuisiner" },
+  drive:   { zh:"开车",zhPin:"kāichē",es:"conducir", fr:"conduire" },
+  fly:     { zh:"飞",  zhPin:"fēi",   es:"volar",    fr:"voler" },
+  sing:    { zh:"唱",  zhPin:"chàng", es:"cantar",   fr:"chanter" },
+  dance:   { zh:"跳舞",zhPin:"tiàowǔ",es:"bailar",  fr:"danser" },
   eat:     { zh:"吃", zhPin:"chī",   es:"comer",    fr:"manger" },
   drink:   { zh:"喝", zhPin:"hē",    es:"beber",    fr:"boire" },
   go:      { zh:"去", zhPin:"qù",    es:"ir",       fr:"aller" },
@@ -2250,17 +2476,6 @@ const EN_WORDS: Record<string, WordEntry> = {
   warm:      { zh:"暖",   zhPin:"nuǎn",    es:"cálido",     fr:"chaud" },
   cool:      { zh:"凉",   zhPin:"liáng",   es:"fresco",     fr:"frais" },
   rainy:     { zh:"雨",   zhPin:"yǔ",      es:"lluvioso",   fr:"pluvieux" },
-  // Common nouns — food
-  pizza:     { zh:"披萨", zhPin:"pīsà",    es:"pizza",      fr:"pizza" },
-  coffee:    { zh:"咖啡", zhPin:"kāfēi",   es:"café",       fr:"café" },
-  rice:      { zh:"米饭", zhPin:"mǐfàn",   es:"arroz",      fr:"riz" },
-  chicken:   { zh:"鸡肉", zhPin:"jīròu",   es:"pollo",      fr:"poulet" },
-  // Common nouns — nature/weather
-  weather:   { zh:"天气", zhPin:"tiānqì",  es:"tiempo",     fr:"temps" },
-  sky:       { zh:"天空", zhPin:"tiānkōng",es:"cielo",      fr:"ciel" },
-  sun:       { zh:"太阳", zhPin:"tàiyáng", es:"sol",        fr:"soleil" },
-  rain:      { zh:"雨",   zhPin:"yǔ",      es:"lluvia",     fr:"pluie" },
-  wind:      { zh:"风",   zhPin:"fēng",    es:"viento",     fr:"vent" },
   fast:    { zh:"快", zhPin:"kuài",  es:"rápido",   fr:"rapide" },
   slow:    { zh:"慢", zhPin:"màn",   es:"lento",    fr:"lent" },
   new:     { zh:"新", zhPin:"xīn",   es:"nuevo",    fr:"nouveau" },
@@ -2276,6 +2491,9 @@ const EN_WORDS: Record<string, WordEntry> = {
   cheap:   { zh:"便宜",zhPin:"piányí",es:"barato",  fr:"pas cher" },
   near:    { zh:"近", zhPin:"jìn",   es:"cerca",    fr:"près" },
   far:     { zh:"远", zhPin:"yuǎn",  es:"lejos",    fr:"loin" },
+  amazing: { zh:"令人惊叹",zhPin:"lìngrén jīngtàn",es:"increíble",fr:"incroyable" },
+  wonderful:{ zh:"美好",zhPin:"měihǎo",es:"maravilloso",fr:"merveilleux" },
+  world:   { zh:"世界",zhPin:"shìjiè",es:"mundo",   fr:"monde" },
   // Common nouns
   time:    { zh:"时间",zhPin:"shíjiān",es:"tiempo",  fr:"temps" },
   day:     { zh:"天", zhPin:"tiān",  es:"día",      fr:"jour" },
@@ -2295,6 +2513,26 @@ const EN_WORDS: Record<string, WordEntry> = {
   map:     { zh:"地图",zhPin:"dìtú",  es:"mapa",    fr:"carte" },
   problem: { zh:"问题",zhPin:"wèntí",es:"problema", fr:"problème" },
   help:    { zh:"帮助",zhPin:"bāngzhù",es:"ayuda",   fr:"aide" },
+  // School & academics
+  math:    { zh:"数学",zhPin:"shùxué",es:"matemáticas",fr:"mathématiques" },
+  science: { zh:"科学",zhPin:"kēxué",es:"ciencia",  fr:"science" },
+  english_subj: { zh:"英语",zhPin:"yīngyǔ",es:"inglés",fr:"anglais" },
+  history: { zh:"历史",zhPin:"lìshǐ", es:"historia", fr:"histoire" },
+  music:   { zh:"音乐",zhPin:"yīnyuè",es:"música",  fr:"musique" },
+  art:     { zh:"艺术",zhPin:"yìshù", es:"art",      fr:"art" },
+  book_n:  { zh:"书",  zhPin:"shū",   es:"libro",    fr:"livre" },
+  class:   { zh:"课",  zhPin:"kè",    es:"clase",    fr:"cours" },
+  test:    { zh:"考试",zhPin:"kǎoshì",es:"examen",   fr:"examen" },
+  // Body & people
+  person:  { zh:"人",  zhPin:"rén",   es:"persona",  fr:"personne" },
+  people:  { zh:"人们",zhPin:"rénmen",es:"personas", fr:"gens" },
+  child:   { zh:"孩子",zhPin:"háizi", es:"niño",     fr:"enfant" },
+  man:     { zh:"男人",zhPin:"nánrén",es:"hombre",   fr:"homme" },
+  woman:   { zh:"女人",zhPin:"nǚrén", es:"mujer",    fr:"femme" },
+  friend:  { zh:"朋友",zhPin:"péngyǒu",es:"amigo",   fr:"ami" },
+  family:  { zh:"家人",zhPin:"jiārén",es:"familia",  fr:"famille" },
+  mother:  { zh:"妈妈",zhPin:"māma",  es:"madre",    fr:"mère" },
+  father:  { zh:"爸爸",zhPin:"bàba",  es:"padre",    fr:"père" },
   // Numbers
   one:     { zh:"一", zhPin:"yī",    es:"uno",      fr:"un" },
   two:     { zh:"二", zhPin:"èr",    es:"dos",      fr:"deux" },
@@ -2335,8 +2573,18 @@ const EN_WORDS: Record<string, WordEntry> = {
   there:   { zh:"那里",zhPin:"nàlǐ",es:"allí",      fr:"là-bas" },
 };
 
+// Word aliases for multi-meaning words stored under variant keys
+const WORD_ALIASES: Record<string, string> = {
+  do: "do_v",
+  does: "do_v",
+  did: "do_v",
+  english: "english_subj",
+};
+
 // Verb "-ing" forms → base verb for lookup
 function baseVerb(word: string): string {
+  // Check aliases first (do→do_v, english→english_subj, etc.)
+  if (WORD_ALIASES[word]) return WORD_ALIASES[word];
   if (word.endsWith("ing") && word.length > 5) {
     const stem = word.slice(0, -3);
     if (EN_WORDS[stem]) return stem;
@@ -2440,4 +2688,74 @@ export function composeLocalTranslation(
   }
 
   return { phrase, phonetic, chunks: chunkData };
+}
+
+// ── Chinese → Pinyin reverse lookup ─────────────────────────────────────────
+// Built lazily from EN_WORDS (zh → zhPin) and NOUNS.zh entries so ANY
+// Chinese character/word that appears in our dictionaries gets pinyin.
+let _zhPinMap: Map<string, string> | null = null;
+
+function getZhPinMap(): Map<string, string> {
+  if (_zhPinMap) return _zhPinMap;
+  _zhPinMap = new Map();
+  // From EN_WORDS
+  for (const entry of Object.values(EN_WORDS)) {
+    const zh = entry.zh;
+    const pin = entry.zhPin;
+    if (zh && pin) _zhPinMap.set(zh, pin);
+  }
+  // From WORD_TABLE_ZH_EN — single character pinyin from comments/known
+  // We don't have pinyin in WORD_TABLE_ZH_EN, but we can build from EN_WORDS
+  // by splitting multi-char entries into individual chars.
+  // e.g. "你好" has "nǐ hǎo" → 你=nǐ, 好=hǎo (if not already present)
+  for (const entry of Object.values(EN_WORDS)) {
+    const zh = entry.zh;
+    const pin = entry.zhPin;
+    if (!zh || !pin) continue;
+    // Split multi-char Chinese + multi-syllable pinyin
+    const chars = zh.split("");
+    const syllables = pin.split(/\s+/);
+    if (chars.length === syllables.length && chars.length > 1) {
+      for (let i = 0; i < chars.length; i++) {
+        if (!_zhPinMap.has(chars[i])) {
+          _zhPinMap.set(chars[i], syllables[i]);
+        }
+      }
+    }
+  }
+  return _zhPinMap;
+}
+
+/**
+ * Look up pinyin for arbitrary Chinese text.
+ * Uses greedy left-to-right longest match against our vocabulary.
+ * Returns pinyin string or "" if nothing matched.
+ */
+export function lookupChinesePinyin(zhText: string): string {
+  if (!zhText) return "";
+  const map = getZhPinMap();
+  const result: string[] = [];
+  let i = 0;
+  while (i < zhText.length) {
+    let matched = false;
+    // Try longest match first (up to 4 chars)
+    for (let len = Math.min(4, zhText.length - i); len > 0; len--) {
+      const substr = zhText.slice(i, i + len);
+      const pin = map.get(substr);
+      if (pin) {
+        result.push(pin);
+        i += len;
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) {
+      // Skip non-CJK characters (punctuation, spaces)
+      if (/[\u4e00-\u9fff]/.test(zhText[i])) {
+        // Unknown CJK char — skip it but don't add garbage
+      }
+      i++;
+    }
+  }
+  return result.join(" ");
 }

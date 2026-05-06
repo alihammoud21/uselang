@@ -32,6 +32,8 @@ import {
 import { getCurriculum } from "@/data/lessons";
 import { getHintTokens, consumeHintToken } from "@/lib/shop-store";
 import { getLocationsForLanguage } from "@/data/map-locations";
+import { recordChallengeProgress } from "@/lib/challenge-store";
+import { awardLessonXP } from "@/lib/progress-store";
 import {
   completePartInLesson,
   completeLessonFull,
@@ -218,6 +220,9 @@ export default function LessonScreen() {
     // Lesson complete
     const ability = await completeLessonFull(langCode, lesson);
     playSound("mastery");
+    // Award XP and track weekly challenge
+    awardLessonXP().catch(() => {});
+    recordChallengeProgress("complete_lessons").catch(() => {});
 
     // Check map unlocks
     if (lesson.mapLocationId) {

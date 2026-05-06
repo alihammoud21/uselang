@@ -88,7 +88,7 @@ const GOAL_LABELS: Record<string, string> = {
 };
 
 const ACCENT_OPTIONS: Record<string, string[]> = {
-  zh: ["Mandarin (Standard)", "Cantonese", "Taiwanese"],
+  zh: ["Mandarin (Standard)", "Cantonese", "Taiwanese", "Shanghainese"],
   es: ["Mexican", "Castilian (Spain)", "Argentine", "Colombian"],
   fr: ["European (France)", "Canadian (Québec)", "African"],
   ja: ["Standard (Tokyo)", "Kansai"],
@@ -168,7 +168,7 @@ export default function SettingsScreen() {
   const handleResetAllData = useCallback(() => {
     Alert.alert(
       "Reset All App Data?",
-      "This will permanently wipe your XP, streak, coins, shop items, lesson progress, and saved phrases. This cannot be undone.",
+      "This will permanently wipe your XP, streak, spheres, shop items, lesson progress, and saved phrases. This cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -238,7 +238,7 @@ export default function SettingsScreen() {
                 <View style={S.progressStat}>
                   <Ionicons name="star" size={18} color={T.gold} />
                   <Text style={S.progressStatVal}>Lv {lvl.level}</Text>
-                  <Text style={S.progressStatLbl}>{progressSummary.xp} XP</Text>
+                  <Text style={S.progressStatLbl}>{Math.max(0, progressSummary.xp)} XP</Text>
                 </View>
                 <View style={S.progressStatDivider} />
                 <View style={S.progressStat}>
@@ -290,7 +290,7 @@ export default function SettingsScreen() {
               )}
             </View>
             <Text style={S.profileSub}>
-              Learning {langLabel} · 12-day streak
+              Learning {langLabel}{progressSummary ? ` · ${progressSummary.streak}-day streak` : ""}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={T.muted2} />
@@ -452,12 +452,12 @@ export default function SettingsScreen() {
             <View style={S.subBloom} />
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
               <View style={S.subDot} />
-              <Text style={S.subEyebrow}>FREE PLAN</Text>
+              <Text style={S.subEyebrow}>PRO TRIAL ACTIVE</Text>
             </View>
-            <Text style={S.subHeadline}>{"Unlock unlimited\ntutor time."}</Text>
-            <Text style={S.subMeta}>Pro · $7.99/mo · cancel anytime.</Text>
+            <Text style={S.subHeadline}>{"You have full access\nto everything."}</Text>
+            <Text style={S.subMeta}>7-day free trial · All features unlocked</Text>
             <Pressable style={({ pressed }) => [S.subCta, pressed && { opacity: 0.85 }]}>
-              <Text style={S.subCtaText}>Upgrade to Pro</Text>
+              <Text style={S.subCtaText}>Pro Active</Text>
             </Pressable>
           </View>
         </View>

@@ -19,6 +19,7 @@ import {
 } from "./offline-tts";
 import { speakRoutedText, stopRoutedTts } from "./tts-router";
 import { getGemmaState, chatWithGemma, isGemmaSupported } from "./gemma-engine";
+import { composeLocalTranslation, translateLine } from "./gemma-stub";
 import { postTutorSessionGemma } from "./gemma-tutor";
 import { type TutorRequest, type TutorResponse } from "./tutor-api";
 import { runWithTimeout } from "./safe-async";
@@ -97,7 +98,8 @@ const QUICK_BUDGETS = { llmMs: 650, ttsStartMs: 450, listenMs: 15_000 };
 const LIVE_BUDGETS = { llmMs: 800, ttsStartMs: 500, listenMs: 18_000 };
 const SPEECH_DELTA_MIN = 0.08;
 const SPEECH_DELTA_MAX = 0.24;
-const SILENCE_MS = 1_400;    // 1.4s silence after speech → finalize (snappier, still safe for natural pauses)
+const SILENCE_MS_QUICK = 1_400;  // 1.4s silence → finalize (snappier for Quick mode)
+const SILENCE_MS_LIVE  = 2_200;  // 2.2s silence → finalize (more forgiving for Live Lang)
 const NO_SPEECH_MS = 10_000; // 10s of no speech at all → give up
 const NOISE_RESET_MS = 6_000;
 
@@ -391,7 +393,7 @@ export function createOfflineVoiceSession(opts: OfflineVoiceSessionOpts): Offlin
 
       const armSilenceTimer = (): void => {
         if (silenceTimer) clearTimeout(silenceTimer);
-        silenceTimer = setTimeout(() => finish(bestText), SILENCE_MS);
+        silenceTimer = setTimeout(() => finish(bestText), opts.continuous ? SILENCE_MS_LIVE : SILENCE_MS_QUICK);
       };
 
       const readiness = latestReadiness;
@@ -495,12 +497,12 @@ export function createOfflineVoiceSession(opts: OfflineVoiceSessionOpts): Offlin
     throw new Error("Gemma returned an empty tutor response.");
   }
 
+  const TRANSLATE_STEP_TIMEOUT = 1500;
+
   async function processTranslate(text: string, turnID: number): Promise<string> {
     if (!isCurrent(turnID)) throw new Error("stale_turn");
-    // Hard guard: Live Lang NEVER uses the stub for translation.
-    if (getGemmaState().usingStub) {
-      throw new Error("Real AI model required for translation. Download the model first.");
-    }
+    // Stub can now attempt translation — no hard guard. The 4-step cascade
+    // below guarantees output even if the model is unavailable.
     const started = Date.now();
     const fromLang = humanLang(opts.targetLang);
     const toLang = humanLang(opts.nativeLang);
@@ -659,7 +661,65 @@ export function createOfflineVoiceSession(opts: OfflineVoiceSessionOpts): Offlin
             opts.onLine?.({ source: transcript, translation: res.naturalPhrase || spoken });
             if (!opts.skipTts) await speak(spoken, opts.targetLang, turnID);
           } else {
-            const output = await processTranslate(transcript, turnID);
+            // ── 4-step deterministic translate cascade ────────────────────
+            // Every transcript MUST produce output. Never blank UI or error.
+            let output: string | null = null;
+
+            // Step 1: Gemma translation (timeout: TRANSLATE_STEP_TIMEOUT)
+            try {
+              output = await runWithTimeout(
+                "cascade.step1",
+                () => processTranslate(transcript, turnID),
+                TRANSLATE_STEP_TIMEOUT,
+              );
+            } catch (e1) {
+              log("cascade step1 failed", (e1 as Error)?.message);
+            }
+
+            // Step 2: Retry with simplified input — strip filler words
+            if (!output && isCurrent(turnID)) {
+              try {
+                const simplified = transcript.replace(/\b(uh|um|like|you know|well|so|basically)\b/gi, "").trim();
+                if (simplified.length > 2) {
+                  output = await runWithTimeout(
+                    "cascade.step2",
+                    () => processTranslate(simplified, turnID),
+                    TRANSLATE_STEP_TIMEOUT,
+                  );
+                }
+              } catch (e2) {
+                log("cascade step2 failed", (e2 as Error)?.message);
+              }
+            }
+
+            // Step 3: Stub dictionary + word-table translation (instant, no timeout)
+            // Uses translateLine which handles BOTH directions:
+            //   zh→en, es→en, fr→en (Live Lang hearing mode)
+            //   en→zh, en→es, en→fr (via composeLocalTranslation)
+            if (!output && isCurrent(turnID)) {
+              try {
+                const fromCode = opts.targetLang.slice(0, 2);
+                const toCode = opts.nativeLang.slice(0, 2);
+                const dictResult = translateLine(transcript, fromCode, toCode);
+                if (dictResult) {
+                  output = dictResult;
+                } else {
+                  // Fallback: composeLocalTranslation for en→target direction
+                  const local = composeLocalTranslation(transcript, toCode);
+                  if (local?.phrase) output = local.phrase;
+                }
+              } catch (e3) {
+                log("cascade step3 failed", (e3 as Error)?.message);
+              }
+            }
+
+            // Step 4: NEVER echo the source text as a fake "translation".
+            // Show a clear message so the user knows translation failed.
+            if (!output) {
+              output = "(Translation unavailable)";
+              log("cascade step4 fallback", { transcript: transcript.slice(0, 60) });
+            }
+
             if (!isCurrent(turnID)) continue;
             setSnap({ lastTranslation: output });
             opts.onLine?.({ source: transcript, translation: output });
@@ -668,12 +728,13 @@ export function createOfflineVoiceSession(opts: OfflineVoiceSessionOpts): Offlin
         } catch (err) {
           if (!isCurrent(turnID)) continue;
           log("gemma turn error", (err as Error)?.message);
+          // Soft error — show transcript as fallback instead of error state
           setSnap({
             state: "ready",
-            errorMessage: (err as Error)?.message || "Gemma failed.",
             partialTranscript: "",
             micLevel: 0,
           });
+          opts.onLine?.({ source: transcript, translation: "(Translation unavailable)" });
           if (!opts.continuous) return;
           await delay(250);
           continue;
@@ -786,9 +847,60 @@ export function createOfflineVoiceSession(opts: OfflineVoiceSessionOpts): Offlin
         opts.onLine?.({ source: clean, translation: res.naturalPhrase || spoken });
         if (!opts.skipTts) await speak(spoken, opts.targetLang, turnID);
       } else {
-        const translation = await processTranslate(clean, turnID);
+        // ── 4-step deterministic translate cascade (same as runLoop) ──────
+        let output: string | null = null;
+
+        // Step 1: Gemma translation
+        try {
+          output = await runWithTimeout(
+            "submit.step1",
+            () => processTranslate(clean, turnID),
+            TRANSLATE_STEP_TIMEOUT,
+          );
+        } catch (e1) {
+          log("submit step1 failed", (e1 as Error)?.message);
+        }
+
+        // Step 2: Retry with simplified input
+        if (!output && isCurrent(turnID)) {
+          try {
+            const simplified = clean.replace(/\b(uh|um|like|you know|well|so|basically)\b/gi, "").trim();
+            if (simplified.length > 2) {
+              output = await runWithTimeout(
+                "submit.step2",
+                () => processTranslate(simplified, turnID),
+                TRANSLATE_STEP_TIMEOUT,
+              );
+            }
+          } catch (e2) {
+            log("submit step2 failed", (e2 as Error)?.message);
+          }
+        }
+
+        // Step 3: Stub dictionary + composeLocalTranslation
+        if (!output && isCurrent(turnID)) {
+          try {
+            const fromCode = opts.targetLang.slice(0, 2);
+            const toCode = opts.nativeLang.slice(0, 2);
+            const dictResult = translateLine(clean, fromCode, toCode);
+            if (dictResult) {
+              output = dictResult;
+            } else {
+              const local = composeLocalTranslation(clean, toCode);
+              if (local?.phrase) output = local.phrase;
+            }
+          } catch (e3) {
+            log("submit step3 failed", (e3 as Error)?.message);
+          }
+        }
+
+        // Step 4: Never blank — show fallback
+        if (!output) {
+          output = "(Translation unavailable)";
+          log("submit step4 fallback", { text: clean.slice(0, 60) });
+        }
+
         if (!isCurrent(turnID)) return;
-        const output = translation;
         setSnap({ lastTranslation: output });
         opts.onLine?.({ source: clean, translation: output });
         if (!opts.skipTts) await speak(output, opts.nativeLang, turnID);

@@ -175,6 +175,15 @@ export default function OfflineVoicePanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
+  // ── Auto-dismiss error messages after 3 seconds ───────────────────────────
+  useEffect(() => {
+    if (!snap.errorMessage) return;
+    const timer = setTimeout(() => {
+      setSnap((prev) => ({ ...prev, errorMessage: "" }));
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [snap.errorMessage]);
+
   const onPrimaryTap = useCallback(async () => {
     if (orbBusyRef.current) return;
     orbBusyRef.current = true;
@@ -182,6 +191,27 @@ export default function OfflineVoicePanel({
       const ctrl = controllerRef.current;
       if (!ctrl) return;
       if (snap.state === "listening" || snap.state === "processing" || snap.state === "recognizing") {
+        // In translate (Live Lang) mode: capture whatever was said and
+        // translate it, then auto-resume listening.
+        if (mode === "translate") {
+          const partial = (snap.partialTranscript || "").trim();
+          if (partial) {
+            // submitText cancels the current listen turn internally,
+            // then runs the translate pipeline on the captured text.
+            await ctrl.submitText(partial);
+          } else {
+            // Nothing captured yet — just stop cleanly.
+            await ctrl.stop();
+          }
+          // Auto-resume listening after translation finishes.
+          setTimeout(async () => {
+            try {
+              orbBusyRef.current = false;
+              await ctrl.start();
+            } catch { /* ignore — user may have navigated away */ }
+          }, 600);
+          return; // skip the finally block's orbBusyRef reset
+        }
         await ctrl.stop();
       } else {
         await ctrl.start();
@@ -191,7 +221,7 @@ export default function OfflineVoicePanel({
     } finally {
       orbBusyRef.current = false;
     }
-  }, [snap.state]);
+  }, [snap.state, snap.partialTranscript, mode]);
 
   const handleLoadModel = useCallback(async () => {
     setLoadingModel(true);
@@ -233,8 +263,20 @@ export default function OfflineVoicePanel({
     setDraft("");
   }, [draft]);
 
+  // ── Render: initial loading spinner ─────────────────────────────────────
+  if (!readiness) {
+    return (
+      <View style={{ flex: 1, backgroundColor, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator size="large" color="#A85D2E" />
+        <Text style={{ marginTop: 14, fontSize: 14, fontWeight: "600", color: COLORS.textSub }}>
+          Preparing…
+        </Text>
+      </View>
+    );
+  }
+
   // ── Render: blocking screen ─────────────────────────────────────────────
-  if (readiness && !readiness.ready) {
+  if (!readiness.ready) {
     return (
       <BlockingScreen
         title={title}
@@ -378,13 +420,13 @@ export default function OfflineVoicePanel({
               marginTop: 12,
               padding: 12,
               borderRadius: 14,
-              backgroundColor: "rgba(239,68,68,0.08)",
+              backgroundColor: "rgba(168,93,46,0.08)",
               borderWidth: 1,
-              borderColor: "rgba(239,68,68,0.18)",
+              borderColor: "rgba(168,93,46,0.18)",
             }}
           >
-            <Text style={{ fontSize: 13, color: COLORS.danger, lineHeight: 19, fontWeight: "600" }}>
-              {snap.errorMessage}
+            <Text style={{ fontSize: 13, color: "#A85D2E", lineHeight: 19, fontWeight: "600" }}>
+              Couldn't catch that clearly — try speaking again
             </Text>
           </View>
         ) : null}
@@ -536,7 +578,7 @@ export default function OfflineVoicePanel({
                 {snap.state === "speaking"
                   ? "Tap to interrupt"
                   : isActive
-                    ? "Tap to stop"
+                    ? mode === "translate" ? "Tap to translate" : "Tap to stop"
                     : "Tap to start"}
               </Text>
             </>

@@ -166,7 +166,7 @@ export default function HomeScreen() {
   const firstName = profile?.userName?.split(" ")[0] || "";
   const streak = summary?.streak ?? 0;
   const confidence = summary?.confidence ?? 0;
-  const xp = summary?.xp ?? 0;
+  const xp = Math.max(0, summary?.xp ?? 0);
   const coins = summary?.coins ?? 0;
   const level = useMemo(() => getLevel(xp), [xp]);
   const nativeLang = profile?.knownLanguages?.[0] || "en";
@@ -192,7 +192,7 @@ export default function HomeScreen() {
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <Pressable onPress={() => router.push("/shop" as any)} style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1, alignItems: "center" })}>
                 <View style={S.coinPill}>
-                  <Text style={S.coinEmoji}>🪙</Text>
+                  <Text style={S.coinEmoji}>⚪</Text>
                   <Text style={S.coinVal}>{coins}</Text>
                 </View>
                 <Text style={S.shopArrow}>· Shop →</Text>
@@ -416,7 +416,7 @@ export default function HomeScreen() {
                     </View>
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
                       <Text style={[S.weekProg, ch.claimed && { color: C.muted }]}>{ch.claimed ? "Done" : `${ch.progress} / ${ch.goal} ${ch.unit}`}</Text>
-                      {!ch.claimed && <View style={[S.coinBadge, canClaim && S.coinBadgeReady]}><Text style={S.coinBadgeText}>🪙 {ch.coins}</Text></View>}
+                      {!ch.claimed && <View style={[S.coinBadge, canClaim && S.coinBadgeReady]}><Text style={S.coinBadgeText}>⚪ {ch.coins}</Text></View>}
                       {ch.claimed && <Ionicons name="checkmark-circle" size={15} color={C.muted} />}
                     </View>
                     {canClaim && <View style={S.claimBtn}><Text style={S.claimText}>Claim reward</Text></View>}
