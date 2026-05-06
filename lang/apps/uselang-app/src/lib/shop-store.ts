@@ -64,7 +64,13 @@ export type ShopItemId =
   | "game_flappy_boat"
   | "game_memory_match"
   | "game_word_chase"
-  | "game_listen_match";
+  | "game_listen_match"
+  | "game_draw"
+  | "game_essay"
+  | "chatbot_assistant"
+  | "lyrics_zh"
+  | "lyrics_es"
+  | "lyrics_fr";
 
 export type ItemCategory = "utility" | "boost" | "cosmetic" | "pack" | "game";
 
@@ -132,6 +138,78 @@ export const SHOP_CATALOG: ShopItem[] = [
     iconColor: "#EC4899",
     iconBg: "rgba(236,72,153,0.12)",
     category: "game",
+    consumable: false,
+  },
+  {
+    id: "game_draw",
+    name: "Character Draw",
+    description: "Draw Chinese characters with your finger — AI scores your strokes!",
+    price: 300,
+    levelRequired: 1,
+    icon: "brush-outline",
+    iconColor: "#14B8A6",
+    iconBg: "rgba(20,184,166,0.12)",
+    category: "game",
+    consumable: false,
+  },
+  {
+    id: "game_essay",
+    name: "Essay Challenge",
+    description: "Write short essays in your target language. AI grades grammar & vocab!",
+    price: 200,
+    levelRequired: 2,
+    icon: "document-text-outline",
+    iconColor: "#6366F1",
+    iconBg: "rgba(99,102,241,0.12)",
+    category: "game",
+    consumable: false,
+  },
+  {
+    id: "chatbot_assistant",
+    name: "AI Assistant",
+    description: "Your personal chatbot — ask anything about language, grammar, or life!",
+    price: 500,
+    levelRequired: 1,
+    icon: "chatbubble-ellipses-outline",
+    iconColor: "#0EA5E9",
+    iconBg: "rgba(14,165,233,0.12)",
+    category: "utility",
+    consumable: false,
+  },
+  {
+    id: "lyrics_zh",
+    name: "Mandarin Lyrics Pack",
+    description: "5 original songs in Mandarin — lyrics, translations & vocab study.",
+    price: 150,
+    levelRequired: 1,
+    icon: "musical-notes-outline",
+    iconColor: "#EF4444",
+    iconBg: "rgba(239,68,68,0.12)",
+    category: "pack",
+    consumable: false,
+  },
+  {
+    id: "lyrics_es",
+    name: "Spanish Lyrics Pack",
+    description: "5 original songs in Spanish — lyrics, translations & vocab study.",
+    price: 150,
+    levelRequired: 1,
+    icon: "musical-notes-outline",
+    iconColor: "#F59E0B",
+    iconBg: "rgba(245,158,11,0.12)",
+    category: "pack",
+    consumable: false,
+  },
+  {
+    id: "lyrics_fr",
+    name: "French Lyrics Pack",
+    description: "5 original songs in French — lyrics, translations & vocab study.",
+    price: 150,
+    levelRequired: 1,
+    icon: "musical-notes-outline",
+    iconColor: "#3B82F6",
+    iconBg: "rgba(59,130,246,0.12)",
+    category: "pack",
     consumable: false,
   },
   // ══════════════════════════════════════════════════════════════════════════
@@ -744,6 +822,16 @@ export async function purchaseItem(id: ShopItemId): Promise<string | null> {
     case "game_memory_match":
     case "game_word_chase":
     case "game_listen_match":
+    case "game_draw":
+    case "game_essay":
+      await AsyncStorage.setItem(`lang:shop:${id}`, "1");
+      break;
+    case "chatbot_assistant":
+      await AsyncStorage.setItem(`lang:shop:${id}`, "1");
+      break;
+    case "lyrics_zh":
+    case "lyrics_es":
+    case "lyrics_fr":
       await AsyncStorage.setItem(`lang:shop:${id}`, "1");
       break;
   }
@@ -818,7 +906,7 @@ export async function consumeCoinDoubler(): Promise<void> {
 
 // ── Game unlock helpers ──────────────────────────────────────────────────────
 
-export type GameId = "game_flappy_boat" | "game_memory_match" | "game_word_chase" | "game_listen_match";
+export type GameId = "game_flappy_boat" | "game_memory_match" | "game_word_chase" | "game_listen_match" | "game_draw" | "game_essay";
 
 export async function isGameUnlocked(gameId: GameId): Promise<boolean> {
   return (await AsyncStorage.getItem(`lang:shop:${gameId}`)) === "1";
@@ -829,4 +917,36 @@ export const GAME_ROUTES: Record<GameId, string> = {
   game_memory_match: "/memory-match",
   game_word_chase: "/word-chase",
   game_listen_match: "/listen-match",
+  game_draw: "/draw-game",
+  game_essay: "/essay-game",
 };
+
+export async function isChatbotUnlocked(): Promise<boolean> {
+  return (await AsyncStorage.getItem("lang:shop:chatbot_assistant")) === "1";
+}
+
+export async function isLyricsUnlocked(lang: "zh" | "es" | "fr"): Promise<boolean> {
+  return (await AsyncStorage.getItem(`lang:shop:lyrics_${lang}`)) === "1";
+}
+
+/** God-mode: unlock everything, set huge XP, mark all done */
+export async function activateGodMode(): Promise<void> {
+  // Unlock all shop items
+  for (const item of SHOP_CATALOG) {
+    await purchaseItem(item.id);
+  }
+  // Exams
+  await AsyncStorage.setItem("lang:examUnlock:zh", "1");
+  await AsyncStorage.setItem("lang:examUnlock:es", "1");
+  await AsyncStorage.setItem("lang:examUnlock:fr", "1");
+  await AsyncStorage.setItem("lang:examPass:zh", "1");
+  await AsyncStorage.setItem("lang:examPass:es", "1");
+  await AsyncStorage.setItem("lang:examPass:fr", "1");
+  // Dev badge
+  await AsyncStorage.setItem("lang:devBadge", "1");
+  await AsyncStorage.setItem("lang:devMode", "1");
+  // Max XP (level 100)
+  await AsyncStorage.setItem("lang:progress:xp", "500000");
+  // Huge hint tokens
+  await AsyncStorage.setItem("lang:shop:hintTokens", "999");
+}

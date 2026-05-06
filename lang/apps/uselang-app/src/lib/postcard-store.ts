@@ -6,7 +6,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type CardRarity = "common" | "uncommon" | "rare" | "legendary";
+export type CardRarity = "common" | "uncommon" | "rare" | "legendary" | "mythic";
 
 export interface PostcardCard {
   id: string;
@@ -57,6 +57,7 @@ export const RARITY_CONFIG: Record<CardRarity, { label: string; color: string; g
   uncommon:  { label: "Uncommon",  color: "#34D399", glow: "rgba(52,211,153,0.30)",  sellMultiplier: 2 },
   rare:      { label: "Rare",      color: "#60A5FA", glow: "rgba(96,165,250,0.35)",  sellMultiplier: 4 },
   legendary: { label: "Legendary", color: "#F59E0B", glow: "rgba(245,158,11,0.45)",  sellMultiplier: 10 },
+  mythic:    { label: "Mythic",    color: "#E11D48", glow: "rgba(225,29,72,0.50)",   sellMultiplier: 25 },
 };
 
 // ── Card catalog ─────────────────────────────────────────────────────────────
@@ -92,6 +93,10 @@ export const CARD_CATALOG: PostcardCard[] = [
   { id: "fr_art",        name: "Art Critic",      phrase: "C'est un chef-d'œuvre", meaning: "It's a masterpiece",         lang: "fr", rarity: "rare",      color: "#6366F1", icon: "color-palette-outline",  sellValue: 40,  xpBonus: 25 },
   { id: "fr_petitprince", name: "Le Petit Prince", phrase: "L'essentiel est invisible", meaning: "What's essential is invisible", lang: "fr", rarity: "rare", color: "#F59E0B", icon: "star-outline",      sellValue: 40,  xpBonus: 25 },
   { id: "fr_clair",      name: "Clair de Lune",   phrase: "Clair de lune",         meaning: "Moonlight",                  lang: "fr", rarity: "legendary", color: "#818CF8", icon: "moon-outline",           sellValue: 75,  xpBonus: 50 },
+  // ── Mythic cards (ultra rare, one per language) ──
+  { id: "zh_dragon",     name: "Dragon Emperor", phrase: "龙腾四海",               meaning: "The dragon soars across the seas", lang: "zh", rarity: "mythic", color: "#E11D48", icon: "flame-outline",         sellValue: 200, xpBonus: 100 },
+  { id: "es_alma",       name: "Heart & Soul",   phrase: "El alma no tiene fronteras", meaning: "The soul has no borders",    lang: "es", rarity: "mythic", color: "#E11D48", icon: "heart-outline",         sellValue: 200, xpBonus: 100 },
+  { id: "fr_etoile",     name: "Étoile Filante", phrase: "Fais un vœu sur l'étoile", meaning: "Make a wish on the star",    lang: "fr", rarity: "mythic", color: "#E11D48", icon: "sparkles-outline",      sellValue: 200, xpBonus: 100 },
 ];
 
 const CARD_MAP = new Map(CARD_CATALOG.map((c) => [c.id, c]));
@@ -104,7 +109,7 @@ export function getCard(id: string): PostcardCard | undefined {
 function buildPool(lang: string): { cardId: string; weight: number }[] {
   return CARD_CATALOG.filter((c) => c.lang === lang).map((c) => ({
     cardId: c.id,
-    weight: c.rarity === "common" ? 40 : c.rarity === "uncommon" ? 25 : c.rarity === "rare" ? 10 : 3,
+    weight: c.rarity === "common" ? 40 : c.rarity === "uncommon" ? 25 : c.rarity === "rare" ? 10 : c.rarity === "legendary" ? 3 : 1,
   }));
 }
 
@@ -177,7 +182,7 @@ export function drawCardsFromPack(pack: PackDefinition): PostcardCard[] {
   }
 
   // Sort: legendary last (the big reveal)
-  const order: Record<CardRarity, number> = { common: 0, uncommon: 1, rare: 2, legendary: 3 };
+  const order: Record<CardRarity, number> = { common: 0, uncommon: 1, rare: 2, legendary: 3, mythic: 4 };
   drawn.sort((a, b) => order[a.rarity] - order[b.rarity]);
 
   return drawn;

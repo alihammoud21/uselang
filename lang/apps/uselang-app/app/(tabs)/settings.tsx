@@ -125,7 +125,7 @@ export default function SettingsScreen() {
   const [themeId, setThemeId] = useState<ThemeId>("paper");
   const [activeBadge, setActiveBadge] = useState<"none" | "polyglot" | "scholar">("none");
 
-  const { themeId: contextThemeId, setTheme: setContextTheme } = useAppTheme();
+  const { theme, themeId: contextThemeId, setTheme: setContextTheme } = useAppTheme();
 
   useEffect(() => {
     getUserProfile().then((p) => {
@@ -201,7 +201,7 @@ export default function SettingsScreen() {
   const accentDefault = ACCENT_DEFAULTS[langCode] ?? "Standard";
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.paper }} edges={["top"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg ?? T.paper }} edges={["top"]}>
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 60 }}
         showsVerticalScrollIndicator={false}

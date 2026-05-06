@@ -30,7 +30,7 @@ import {
   type ErrorClassification,
 } from "@/lib/tutor-engine";
 import { getCurriculum } from "@/data/lessons";
-import { getHintTokens, consumeHintToken } from "@/lib/shop-store";
+import { getHintTokens, consumeHintToken, isChatbotUnlocked } from "@/lib/shop-store";
 import { getLocationsForLanguage } from "@/data/map-locations";
 import { recordChallengeProgress } from "@/lib/challenge-store";
 import { awardLessonXP } from "@/lib/progress-store";
@@ -99,6 +99,7 @@ export default function LessonScreen() {
   const [correctStreak, setCorrectStreak] = useState(0);
   const [hintCount, setHintCount] = useState(0);
   const [hintRevealed, setHintRevealed] = useState(false);
+  const [chatAvailable, setChatAvailable] = useState(false);
 
   // AI evaluation (tutor engine)
   const [aiEval, setAiEval] = useState<LearnEvaluation | null>(null);
@@ -109,9 +110,10 @@ export default function LessonScreen() {
   const completionScale = useRef(new RNAnimated.Value(0.8)).current;
   const scrollRef = useRef<ScrollView>(null);
 
-  // ── Load hint count ───────────────────────────────────────────────────────
+  // ── Load hint count + chatbot availability ──────────────────────────────────
   useEffect(() => {
     getHintTokens().then(setHintCount).catch(() => {});
+    isChatbotUnlocked().then(setChatAvailable).catch(() => {});
   }, []);
 
   // ── Load lesson ──────────────────────────────────────────────────────────
@@ -682,6 +684,34 @@ export default function LessonScreen() {
         </View>
 
         {/* Tutor modal removed */}
+
+        {/* ── Floating Chatbot Help Button ── */}
+        {chatAvailable && !showCompletion && (
+          <Pressable
+            onPress={() => router.push({
+              pathname: "/chatbot",
+              params: { lang: langCode, context: lesson?.title || "" },
+            })}
+            style={{
+              position: "absolute",
+              bottom: 28,
+              left: 18,
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              backgroundColor: "#0EA5E9",
+              alignItems: "center",
+              justifyContent: "center",
+              shadowColor: "#0EA5E9",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.35,
+              shadowRadius: 10,
+              elevation: 6,
+            }}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={22} color="#FFF" />
+          </Pressable>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

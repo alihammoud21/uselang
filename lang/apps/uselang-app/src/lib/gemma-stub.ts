@@ -1737,11 +1737,135 @@ export function stubChat(messages: ChatMessage[]): string {
     return "";
   }
 
+  // ── Chatbot / conversational mode ────────────────────────────
+  // Detect if this is a chatbot-style conversation (system prompt mentions "tutor", "assistant", "chat")
+  const isChatMode = /language tutor|AI assistant|assistant inside|answer any question|answer questions about grammar/i.test(system);
+  if (isChatMode) {
+    return stubChatResponse(user, system);
+  }
+
   // Default: tutor-style chat, condensed to one line.
   const json = stubGenerateTutorJson(messages);
   return [json.naturalPhrase, json.phonetic && `(${json.phonetic})`, json.context]
     .filter(Boolean)
     .join(" — ");
+}
+
+/** Conversational AI stub — returns helpful responses for chat mode */
+function stubChatResponse(user: string, system: string): string {
+  const u = user.toLowerCase().trim();
+  const langMatch = system.match(/learning:\s*(\w+)/i);
+  const lang = langMatch?.[1] || "zh";
+  const langName = LANG_LABELS[lang] || "that language";
+
+  // Greetings
+  if (/^(hi|hello|hey|hola|bonjour|你好|salut|sup|what'?s up)\b/i.test(u)) {
+    const greetings: Record<string, string> = {
+      zh: "你好 (nǐ hǎo)! That means 'hello' in Mandarin.",
+      es: "¡Hola! That's 'hello' in Spanish.",
+      fr: "Bonjour ! That's 'hello' in French.",
+    };
+    return `Hi there! 👋 Welcome to your ${langName} learning assistant!\n\n` +
+      `In ${langName}: ${greetings[lang] || "Hello!"}\n\n` +
+      `I can help you with:\n` +
+      `• Grammar explanations\n` +
+      `• Vocabulary practice\n` +
+      `• Pronunciation tips\n` +
+      `• Cultural context\n\n` +
+      `What would you like to learn today?`;
+  }
+
+  // How are you
+  if (/how are you|how'?s it going|how do you do/i.test(u)) {
+    const phrases: Record<string, string> = {
+      zh: "我很好 (wǒ hěn hǎo) — I'm doing well!",
+      es: "¡Estoy bien! — I'm doing well!",
+      fr: "Je vais bien ! — I'm doing well!",
+    };
+    return `I'm great, thanks for asking! Here's how to say it in ${langName}:\n\n` +
+      `${phrases[lang] || "I'm well!"}\n\n` +
+      `Would you like to practice more phrases like this?`;
+  }
+
+  // Thank you
+  if (/thank|thanks|gracias|merci|谢谢/i.test(u)) {
+    const phrases: Record<string, string> = {
+      zh: "不客气 (bú kèqi) — You're welcome!",
+      es: "¡De nada! — You're welcome!",
+      fr: "De rien ! — You're welcome!",
+    };
+    return `You're welcome! In ${langName}:\n\n${phrases[lang] || "You're welcome!"}\n\nKeep up the great work! 🌟`;
+  }
+
+  // Grammar questions
+  if (/grammar|tense|conjugat|verb|adjective|noun|pronoun|sentence structure/i.test(u)) {
+    const tips: Record<string, string> = {
+      zh: "Mandarin has no verb conjugations! Instead, time words like 昨天 (yesterday) or 明天 (tomorrow) show when something happens. The basic sentence order is Subject + Time + Verb + Object.",
+      es: "Spanish verbs conjugate based on the subject. For example, 'hablar' (to speak): yo hablo, tú hablas, él habla. Regular -ar, -er, and -ir verbs follow predictable patterns.",
+      fr: "French has gendered nouns — every noun is either masculine (le) or feminine (la). Adjectives must agree in gender and number with the noun they describe.",
+    };
+    return tips[lang] || `Great grammar question! ${langName} has some unique grammar rules. Could you ask about a specific grammar point? For example:\n\n• Verb conjugations\n• Sentence structure\n• Tenses\n• Articles and pronouns`;
+  }
+
+  // Vocabulary
+  if (/vocab|word|mean|translate|say.*in|how do you say/i.test(u)) {
+    const basics: Record<string, string> = {
+      zh: "Here are some essential Mandarin words:\n\n• 是 (shì) — is/am/are\n• 好 (hǎo) — good\n• 大 (dà) — big\n• 小 (xiǎo) — small\n• 吃 (chī) — to eat\n• 喝 (hē) — to drink\n• 去 (qù) — to go\n• 来 (lái) — to come",
+      es: "Here are some essential Spanish words:\n\n• ser/estar — to be\n• bueno — good\n• grande — big\n• pequeño — small\n• comer — to eat\n• beber — to drink\n• ir — to go\n• venir — to come",
+      fr: "Here are some essential French words:\n\n• être — to be\n• bon/bonne — good\n• grand(e) — big\n• petit(e) — small\n• manger — to eat\n• boire — to drink\n• aller — to go\n• venir — to come",
+    };
+    return basics[lang] || `Here are some useful words to start with in ${langName}. What specific word or phrase would you like to know?`;
+  }
+
+  // Pronunciation
+  if (/pronunciat|pronounce|tone|sound|speak/i.test(u)) {
+    const tips: Record<string, string> = {
+      zh: "Mandarin has 4 tones + a neutral tone:\n\n• 1st tone (ā) — high and flat, like singing a note\n• 2nd tone (á) — rising, like asking 'what?'\n• 3rd tone (ǎ) — dips low then rises\n• 4th tone (à) — sharp falling, like saying 'no!'\n\nTones change the meaning completely! 妈 (mā) = mom, 马 (mǎ) = horse.",
+      es: "Spanish pronunciation is very consistent — what you see is what you say! Key tips:\n\n• Roll the 'rr' (perro, carro)\n• 'ñ' sounds like 'ny' (año = ah-nyo)\n• 'j' sounds like English 'h' (jugo = HOO-go)\n• 'll' sounds like 'y' (calle = KAH-yeh)",
+      fr: "French pronunciation tips:\n\n• The 'r' is at the back of your throat (gargle lightly)\n• Nasal vowels: 'on' (bong), 'an' (ahng), 'in' (ang)\n• Silent final consonants (petit → puh-TEE)\n• Liaison: connect final consonant to next vowel (les amis → lay-zah-MEE)",
+    };
+    return tips[lang] || `Pronunciation is key for ${langName}! Could you ask about a specific sound or word you're struggling with?`;
+  }
+
+  // Culture
+  if (/culture|custom|tradition|food|festival|holiday/i.test(u)) {
+    const culture: Record<string, string> = {
+      zh: "Chinese culture is rich and diverse! 🏮\n\n• Spring Festival (春节) is the biggest holiday — families gather for reunion dinners\n• Tea culture is deeply important — it's rude to refuse tea\n• The number 8 (八) is lucky because it sounds like 'prosperity'\n• Red is the color of luck and happiness\n\nWant to learn phrases related to Chinese culture?",
+      es: "Spanish-speaking cultures are vibrant! 🎉\n\n• 'La siesta' is a real tradition in Spain\n• Family meals are long and social events\n• Greetings often include a kiss on the cheek\n• Festivals like La Tomatina and Día de los Muertos are world-famous\n\nWant to learn cultural phrases?",
+      fr: "French culture is all about art de vivre! 🥐\n\n• Mealtimes are sacred — lunch can last 1-2 hours\n• Always say 'bonjour' when entering a shop\n• The 'bise' (cheek kiss) varies by region (1-4 kisses!)\n• Wine and cheese aren't just food — they're culture\n\nWant to learn cultural expressions?",
+    };
+    return culture[lang] || `That's a great topic! ${langName} has a fascinating culture. What specific aspect interests you?`;
+  }
+
+  // Numbers
+  if (/number|count|one two|1 2|how to count/i.test(u)) {
+    const nums: Record<string, string> = {
+      zh: "Numbers 1-10 in Mandarin:\n\n1 一 (yī) · 2 二 (èr) · 3 三 (sān) · 4 四 (sì) · 5 五 (wǔ)\n6 六 (liù) · 7 七 (qī) · 8 八 (bā) · 9 九 (jiǔ) · 10 十 (shí)\n\nFun fact: 4 (四 sì) is considered unlucky because it sounds like 死 (sǐ, death)!",
+      es: "Numbers 1-10 in Spanish:\n\n1 uno · 2 dos · 3 tres · 4 cuatro · 5 cinco\n6 seis · 7 siete · 8 ocho · 9 nueve · 10 diez\n\nTip: These are essential for shopping, ordering, and giving phone numbers!",
+      fr: "Numbers 1-10 in French:\n\n1 un · 2 deux · 3 trois · 4 quatre · 5 cinq\n6 six · 7 sept · 8 huit · 9 neuf · 10 dix\n\nFun fact: French counts oddly after 69 — 70 is 'soixante-dix' (sixty-ten)!",
+    };
+    return nums[lang] || `Here are the basic numbers in ${langName}! Would you like to practice counting?`;
+  }
+
+  // Help / what can you do
+  if (/help|what can you|what do you|capabilities|features/i.test(u)) {
+    return `I'm your ${langName} learning assistant! Here's what I can help with:\n\n` +
+      `📚 **Grammar** — Ask about sentence structure, verb tenses, particles\n` +
+      `📝 **Vocabulary** — Learn new words and their usage\n` +
+      `🗣️ **Pronunciation** — Tips for tricky sounds and tones\n` +
+      `🌍 **Culture** — Learn about customs, festivals, etiquette\n` +
+      `🔢 **Numbers** — Counting, dates, and math vocabulary\n` +
+      `💬 **Conversation** — Practice common phrases and dialogues\n\n` +
+      `Just type your question and I'll help! You can write in English or ${langName}.`;
+  }
+
+  // Fallback — something conversational and helpful
+  const fallbacks = [
+    `That's a great question! In ${langName}, this relates to some interesting concepts. Could you tell me more about what specifically you'd like to learn? I can help with grammar, vocabulary, pronunciation, or cultural context.`,
+    `I'd love to help you with that! To give you the best answer, could you be more specific? For example, are you looking for:\n\n• A translation?\n• A grammar explanation?\n• Pronunciation help?\n• Vocabulary building?\n\nJust let me know!`,
+    `Good question! Let me help you explore this in ${langName}. Here are some ways I can assist:\n\n• Explain grammar rules\n• Teach new vocabulary\n• Share pronunciation tips\n• Provide cultural context\n\nWhat would be most helpful for you right now?`,
+  ];
+  return fallbacks[Math.floor(Math.random() * fallbacks.length)];
 }
 
 // ── Translate-line helpers ─────────────────────────────────────────────────

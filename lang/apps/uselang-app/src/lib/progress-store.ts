@@ -331,3 +331,51 @@ export async function getProgressSummary(): Promise<ProgressSummary> {
 export async function getRecentAttempts(limit = 10): Promise<AttemptRecord[]> {
   return (await readAttempts()).slice(0, limit);
 }
+
+// ── Recent Activity Log ─────────────────────────────────────────────────────
+
+export interface ActivityEntry {
+  id: string;
+  type: "lesson" | "game" | "practice" | "exam" | "challenge" | "shop";
+  label: string;
+  detail: string;
+  ts: number;
+  xp?: number;
+}
+
+const ACTIVITY_KEY = "lang:activityLog";
+const MAX_ACTIVITY = 50;
+
+export async function logActivity(entry: Omit<ActivityEntry, "id" | "ts">): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(ACTIVITY_KEY);
+    const log: ActivityEntry[] = raw ? JSON.parse(raw) : [];
+    log.unshift({ ...entry, id: `act-${Date.now()}`, ts: Date.now() });
+    await AsyncStorage.setItem(ACTIVITY_KEY, JSON.stringify(log.slice(0, MAX_ACTIVITY)));
+  } catch { /* non-fatal */ }
+}
+
+export async function getActivityLog(limit = 20): Promise<ActivityEntry[]> {
+  try {
+    const raw = await AsyncStorage.getItem(ACTIVITY_KEY);
+    const log: ActivityEntry[] = raw ? JSON.parse(raw) : [];
+    return log.slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+/** Export progress data as JSON string (for sharing / saving) */
+export async function exportProgressData(): Promise<string> {
+  const [summary, activities, attempts] = await Promise.all([
+    getProgressSummary(),
+    getActivityLog(50),
+    getRecentAttempts(50),
+  ]);
+  return JSON.stringify({
+    exportedAt: new Date().toISOString(),
+    summary,
+    recentActivities: activities,
+    recentAttempts: attempts,
+  }, null, 2);
+}

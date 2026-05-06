@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlurView } from "expo-blur";
 import {
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +12,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, { useSharedValue, withTiming, Easing, useAnimatedStyle, runOnJS } from "react-native-reanimated";
 import { SUPPORTED_LANGUAGES } from "@/lib/constants";
 import { useAppTheme } from "@/lib/theme-context";
 import { getCurriculum } from "@/data/lessons";
@@ -20,6 +22,7 @@ import type { Lesson } from "@/lib/lesson-types";
 import { getProgressSummary, type ProgressSummary, getLevel } from "@/lib/progress-store";
 import { getUserProfile, type UserProfile } from "@/lib/user-store";
 import { getChallenges, claimChallenge, type ChallengeWithDef } from "@/lib/challenge-store";
+import { canSpinToday, spinWheel, claimReward, REWARD_SLICES, type RewardSlice } from "@/lib/weekly-rewards";
 import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -118,9 +121,50 @@ export default function HomeScreen() {
     partsDone: number;
     totalParts: number;
   } | null>(null);
+  const [weeklySpinAvailable, setWeeklySpinAvailable] = useState(false);
+  const [showSpinModal, setShowSpinModal] = useState(false);
+  const [spinResult, setSpinResult] = useState<RewardSlice | null>(null);
+  const [spinning, setSpinning] = useState(false);
+  const spinRotation = useSharedValue(0);
+  const spinCheckedRef = useRef(false);
+
+  const spinAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${spinRotation.value}deg` }],
+  }));
+
+  const doSpin = useCallback(() => {
+    if (spinning) return;
+    setSpinning(true);
+    const result = spinWheel();
+    const sliceIdx = REWARD_SLICES.findIndex((s) => s.id === result.id);
+    const sliceAngle = 360 / REWARD_SLICES.length;
+    const targetAngle = 360 * 5 + (360 - sliceIdx * sliceAngle - sliceAngle / 2);
+    spinRotation.value = withTiming(targetAngle, { duration: 4000, easing: Easing.out(Easing.cubic) }, (finished) => {
+      if (finished) {
+        runOnJS(setSpinResult)(result);
+        runOnJS(setSpinning)(false);
+      }
+    });
+  }, [spinning, spinRotation]);
+
+  const claimAndClose = useCallback(async () => {
+    if (spinResult) {
+      await claimReward(spinResult);
+    }
+    setShowSpinModal(false);
+    setSpinResult(null);
+    setWeeklySpinAvailable(false);
+    spinRotation.value = 0;
+  }, [spinResult, spinRotation]);
 
   const refresh = useCallback(async () => {
-    const [p, s, ch] = await Promise.all([getUserProfile(), getProgressSummary(), getChallenges()]);
+    const [p, s, ch, spinOk] = await Promise.all([getUserProfile(), getProgressSummary(), getChallenges(), canSpinToday()]);
+    setWeeklySpinAvailable(spinOk);
+    // Auto-show spin popup once per app session when available
+    if (spinOk && !spinCheckedRef.current) {
+      spinCheckedRef.current = true;
+      setTimeout(() => setShowSpinModal(true), 600);
+    }
     setChallenges(ch);
     setProfile(p);
     setSummary(s);
@@ -230,7 +274,7 @@ export default function HomeScreen() {
 
         {/* ══ XP LEVEL BAR ══ */}
         <View style={[S.px, { marginTop: 14 }]}>
-          <View style={{
+          <Pressable onPress={() => router.push("/battle-pass" as any)} style={{
             flexDirection: "row", alignItems: "center", gap: 10,
             backgroundColor: C.card, borderRadius: 14, padding: 14,
             borderWidth: 0.5, borderColor: C.hair,
@@ -254,7 +298,7 @@ export default function HomeScreen() {
                 }} />
               </View>
             </View>
-          </View>
+          </Pressable>
         </View>
 
         {/* ══ STREAK WEEK ══ */}
@@ -450,6 +494,23 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        {/* ══ DAILY REWARD ══ */}
+        {weeklySpinAvailable && (
+          <Pressable
+            onPress={() => setShowSpinModal(true)}
+            style={({ pressed }) => [S.weeklyCard, pressed && { opacity: 0.85, transform: [{ scale: 0.98 }] }]}
+          >
+            <View style={S.weeklyIcon}>
+              <Ionicons name="sparkles" size={22} color="#F59E0B" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={S.weeklyTitle}>Daily Reward</Text>
+              <Text style={S.weeklySub}>Spin the wheel for a free prize!</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={C.muted} />
+          </Pressable>
+        )}
+
         {/* ══ EXPLORE ══ */}
         <View style={[S.px, { marginTop: 22 }]}>
           <View style={[S.eyebrowRow, { marginBottom: 12 }]}>
@@ -487,6 +548,68 @@ export default function HomeScreen() {
         </View>
 
       </ScrollView>
+
+      {/* ══ DAILY SPIN POPUP MODAL ══ */}
+      <Modal visible={showSpinModal} transparent animationType="fade" statusBarTranslucent>
+        <View style={S.spinOverlay}>
+          <View style={S.spinSheet}>
+            <Text style={S.spinTitle}>Daily Reward!</Text>
+            <Text style={S.spinSub}>Spin the wheel for today's prize</Text>
+
+            {/* Wheel */}
+            <View style={S.spinWheelWrap}>
+              {/* Pointer */}
+              <View style={S.spinPointer}>
+                <Ionicons name="caret-down" size={28} color="#F59E0B" />
+              </View>
+              <Animated.View style={[S.spinWheelOuter, spinAnimStyle]}>
+                {REWARD_SLICES.map((slice, i) => {
+                  const angle = (i * 360) / REWARD_SLICES.length;
+                  return (
+                    <View
+                      key={slice.id}
+                      style={[
+                        S.spinSlice,
+                        {
+                          transform: [
+                            { rotate: `${angle}deg` },
+                            { translateY: -70 },
+                          ],
+                        },
+                      ]}
+                    >
+                      <Ionicons name={slice.icon as any} size={18} color={slice.color} />
+                      <Text style={[S.spinSliceLabel, { color: slice.color }]}>{slice.label}</Text>
+                    </View>
+                  );
+                })}
+              </Animated.View>
+            </View>
+
+            {/* Result or spin button */}
+            {spinResult ? (
+              <View style={{ alignItems: "center", gap: 8, marginTop: 16 }}>
+                <Ionicons name={spinResult.icon as any} size={36} color={spinResult.color} />
+                <Text style={S.spinResultLabel}>{spinResult.label}</Text>
+                <Text style={S.spinResultSub}>
+                  {spinResult.action === "nothing" ? "Better luck tomorrow!" : "Claimed!"}
+                </Text>
+                <Pressable onPress={claimAndClose} style={S.spinClaimBtn}>
+                  <Text style={S.spinClaimText}>Done</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                onPress={doSpin}
+                disabled={spinning}
+                style={[S.spinGoBtn, spinning && { opacity: 0.5 }]}
+              >
+                <Text style={S.spinGoText}>{spinning ? "Spinning..." : "SPIN!"}</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -669,4 +792,64 @@ const S = StyleSheet.create({
 
 
   cardPressed: { opacity: 0.90, transform: [{ scale: 0.97 }] },
+
+  // Weekly reward card
+  weeklyCard: {
+    flexDirection: "row" as const, alignItems: "center" as const, gap: 12,
+    marginHorizontal: 20, marginTop: 18, paddingVertical: 14, paddingHorizontal: 16,
+    backgroundColor: "rgba(245,158,11,0.06)", borderRadius: 16,
+    borderWidth: 1, borderColor: "rgba(245,158,11,0.15)",
+  },
+  weeklyIcon: {
+    width: 42, height: 42, borderRadius: 14,
+    backgroundColor: "rgba(245,158,11,0.12)",
+    alignItems: "center" as const, justifyContent: "center" as const,
+  },
+  weeklyTitle: { fontFamily: F.sansBold, fontSize: 15, color: C.ink, letterSpacing: -0.2 },
+  weeklySub: { fontFamily: F.sans, fontSize: 12, color: C.muted, marginTop: 1 },
+
+  // Spin modal
+  spinOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.65)",
+    alignItems: "center" as const, justifyContent: "center" as const,
+  },
+  spinSheet: {
+    width: 320, backgroundColor: "#1A1510", borderRadius: 28,
+    paddingVertical: 28, paddingHorizontal: 24, alignItems: "center" as const,
+    borderWidth: 1, borderColor: "rgba(245,158,11,0.18)",
+    shadowColor: "#F59E0B", shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.2, shadowRadius: 30, elevation: 10,
+  },
+  spinTitle: { fontFamily: F.serifBold, fontSize: 24, color: "#F3EDE3", letterSpacing: -0.3 },
+  spinSub: { fontFamily: F.sans, fontSize: 13, color: "rgba(243,237,227,0.50)", marginTop: 4, marginBottom: 20 },
+  spinWheelWrap: {
+    width: 220, height: 220, alignItems: "center" as const, justifyContent: "center" as const,
+  },
+  spinPointer: {
+    position: "absolute" as const, top: -4, zIndex: 10, alignSelf: "center" as const,
+  },
+  spinWheelOuter: {
+    width: 200, height: 200, borderRadius: 100,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 2, borderColor: "rgba(245,158,11,0.30)",
+    alignItems: "center" as const, justifyContent: "center" as const,
+  },
+  spinSlice: {
+    position: "absolute" as const, alignItems: "center" as const, gap: 2,
+  },
+  spinSliceLabel: { fontSize: 8, fontFamily: "Geist-SemiBold", textAlign: "center" as const },
+  spinResultLabel: { fontFamily: "Geist-Bold", fontSize: 20, color: "#F3EDE3", letterSpacing: -0.3 },
+  spinResultSub: { fontFamily: "Geist-Regular", fontSize: 13, color: "rgba(243,237,227,0.50)" },
+  spinClaimBtn: {
+    marginTop: 12, backgroundColor: "#C8804A", paddingHorizontal: 40, paddingVertical: 14,
+    borderRadius: 99,
+  },
+  spinClaimText: { fontFamily: "Geist-Bold", fontSize: 15, color: "#FFF", letterSpacing: 0.3 },
+  spinGoBtn: {
+    marginTop: 16, backgroundColor: "#F59E0B", paddingHorizontal: 48, paddingVertical: 16,
+    borderRadius: 99,
+    shadowColor: "#F59E0B", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4, shadowRadius: 12, elevation: 6,
+  },
+  spinGoText: { fontFamily: "Geist-Bold", fontSize: 18, color: "#1A1510", letterSpacing: 1 },
 });

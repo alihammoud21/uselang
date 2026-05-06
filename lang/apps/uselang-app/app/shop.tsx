@@ -28,6 +28,7 @@ import {
   hasCoinDoubler,
   isGameUnlocked,
   GAME_ROUTES,
+  activateGodMode,
   type ShopItemId,
   type ItemCategory,
   type GameId,
@@ -189,10 +190,11 @@ export default function ShopScreen() {
   const [redeemCode, setRedeemCode] = useState("");
   const [redeemExpanded, setRedeemExpanded] = useState(false);
 
-  const ADMIN_CODES: Record<string, { label: string; coins: number; unlockAll: boolean }> = {
-    "USELANG-ADMIN-2025":  { label: "Admin Access",  coins: 99999, unlockAll: true },
-    "USELANG-TESTER":      { label: "Tester Pack",   coins: 10000, unlockAll: false },
-    "USELANG-BETA":        { label: "Beta Reward",   coins: 5000,  unlockAll: false },
+  const ADMIN_CODES: Record<string, { label: string; coins: number; unlockAll: boolean; godMode?: boolean }> = {
+    "USELANG-GOD":         { label: "God Mode",      coins: 999999, unlockAll: true, godMode: true },
+    "USELANG-ADMIN-2025":  { label: "Admin Access",  coins: 99999,  unlockAll: true },
+    "USELANG-TESTER":      { label: "Tester Pack",   coins: 10000,  unlockAll: false },
+    "USELANG-BETA":        { label: "Beta Reward",   coins: 5000,   unlockAll: false },
   };
 
   const handleRedeem = useCallback(async () => {
@@ -201,7 +203,9 @@ export default function ShopScreen() {
     const entry = ADMIN_CODES[code];
     if (!entry) { Alert.alert("Invalid Code", "This code is not recognized."); return; }
     await addCoins(entry.coins);
-    if (entry.unlockAll) {
+    if (entry.godMode) {
+      await activateGodMode();
+    } else if (entry.unlockAll) {
       for (const item of CATALOG) { if (!owned.includes(item.id)) await purchaseItem(item.id); }
       await Promise.all([
         AsyncStorage.setItem("lang:examUnlock:zh", "1"),
@@ -211,7 +215,10 @@ export default function ShopScreen() {
     }
     await load();
     setRedeemCode("");
-    Alert.alert(`${entry.label} Redeemed!`, `+${entry.coins.toLocaleString()} spheres${entry.unlockAll ? "\nAll items + exams unlocked!" : ""}`);
+    const msg = entry.godMode
+      ? `+${entry.coins.toLocaleString()} spheres\nEVERYTHING unlocked — all items, exams, lessons, dev mode, level 100!`
+      : `+${entry.coins.toLocaleString()} spheres${entry.unlockAll ? "\nAll items + exams unlocked!" : ""}`;
+    Alert.alert(`${entry.label} Redeemed!`, msg);
   }, [redeemCode, owned, load]);
 
   return (
@@ -423,6 +430,53 @@ export default function ShopScreen() {
           </View>
         )}
 
+        {/* ── My Items (quick access to owned) ── */}
+        {owned.length > 0 && (
+          <View style={{ marginTop: 12, marginBottom: 6 }}>
+            <View style={S.sectionHeader}>
+              <Ionicons name="bag-check-outline" size={16} color={C.amber} />
+              <Text style={S.sectionTitle}>MY ITEMS</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 18, gap: 10 }}>
+              {/* Collection shortcut always shows if any cards */}
+              {totalCards > 0 && (
+                <Pressable onPress={() => router.push("/collection")} style={S.myItemChip}>
+                  <Ionicons name="images-outline" size={16} color="#8B5CF6" />
+                  <Text style={S.myItemLabel}>Collection ({uniqueCards})</Text>
+                </Pressable>
+              )}
+              {/* Show owned games */}
+              {gameItems.filter(g => owned.includes(g.id)).map(g => (
+                <Pressable key={g.id} onPress={() => handleGameTap(g)} style={S.myItemChip}>
+                  <Ionicons name={g.icon as any} size={16} color={g.iconColor} />
+                  <Text style={S.myItemLabel}>{g.name}</Text>
+                </Pressable>
+              ))}
+              {/* Lyrics */}
+              {owned.includes("lyrics_pack" as ShopItemId) && (
+                <Pressable onPress={() => router.push({ pathname: "/lyrics" as any, params: { lang: langCode } })} style={S.myItemChip}>
+                  <Ionicons name="musical-notes-outline" size={16} color="#EC4899" />
+                  <Text style={S.myItemLabel}>Lyrics</Text>
+                </Pressable>
+              )}
+              {/* Chatbot */}
+              {owned.includes("chatbot_assistant" as ShopItemId) && (
+                <Pressable onPress={() => router.push({ pathname: "/chatbot" as any, params: { lang: langCode } })} style={S.myItemChip}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={16} color="#0EA5E9" />
+                  <Text style={S.myItemLabel}>AI Chat</Text>
+                </Pressable>
+              )}
+              {/* Themes */}
+              {(owned.includes("dark_theme" as ShopItemId) || owned.includes("sand_theme" as ShopItemId)) && (
+                <Pressable onPress={() => router.push("/(tabs)/settings" as any)} style={S.myItemChip}>
+                  <Ionicons name="color-palette-outline" size={16} color="#6366F1" />
+                  <Text style={S.myItemLabel}>Themes</Text>
+                </Pressable>
+              )}
+            </ScrollView>
+          </View>
+        )}
+
         {/* ── Redeem code ── */}
         <Pressable onPress={() => setRedeemExpanded(!redeemExpanded)} style={S.redeemRow}>
           <Ionicons name="gift-outline" size={16} color={C.amber} />
@@ -573,4 +627,13 @@ const S = StyleSheet.create({
     paddingHorizontal: 14, fontSize: 14, fontWeight: "500", color: C.ink,
   },
   redeemBtn: { height: 40, paddingHorizontal: 18, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+
+  // ── My Items ──
+  myItemChip: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    backgroundColor: C.card, borderRadius: 99,
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderWidth: 0.5, borderColor: C.border,
+  },
+  myItemLabel: { fontSize: 12, fontWeight: "600", color: C.ink },
 });

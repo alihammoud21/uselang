@@ -15,6 +15,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getUserProfile } from "@/lib/user-store";
+import { isChatbotUnlocked } from "@/lib/shop-store";
+import { useAppTheme } from "@/lib/theme-context";
 import { getCurriculum } from "@/data/lessons";
 import { getCoinBalance, spendCoins, getChallenges } from "@/lib/challenge-store";
 import {
@@ -64,6 +66,7 @@ const LANG_TABS = [
 
 export default function LessonsScreen() {
   const router = useRouter();
+  const { theme } = useAppTheme();
   const [curriculum, setCurriculum] = useState<LanguageCurriculum | null>(null);
   const [progress, setProgress] = useState<LanguageProgress | null>(null);
   const [langCode, setLangCode] = useState("");
@@ -71,6 +74,7 @@ export default function LessonsScreen() {
   const [coinBalance, setCoinBalance] = useState(0);
   const [completedMissions, setCompletedMissions] = useState(0);
   const [examUnlocked, setExamUnlocked] = useState(false);
+  const [chatUnlocked, setChatUnlocked] = useState(false);
   const langCodeRef = useRef(""); // stable ref for subscriber closure
 
   const switchToLang = useCallback(async (code: string) => {
@@ -101,14 +105,16 @@ export default function LessonsScreen() {
   }, [switchToLang]);
 
   const loadExamMeta = useCallback(async () => {
-    const [bal, chs, unlockFlag] = await Promise.all([
+    const [bal, chs, unlockFlag, chatFlag] = await Promise.all([
       getCoinBalance(),
       getChallenges(),
       AsyncStorage.getItem(`lang:examUnlock:${langCodeRef.current}`),
+      isChatbotUnlocked(),
     ]);
     setCoinBalance(bal);
     setCompletedMissions(chs.filter((c) => c.completed).length);
     setExamUnlocked(unlockFlag === "1");
+    setChatUnlocked(chatFlag);
   }, []);
 
   useFocusEffect(useCallback(() => { loadExamMeta(); }, [loadExamMeta]));
@@ -134,7 +140,7 @@ export default function LessonsScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[S.root, { justifyContent: "center", alignItems: "center" }]}>
+      <SafeAreaView style={[S.root, { justifyContent: "center", alignItems: "center", backgroundColor: theme.bg }]}>
         <ActivityIndicator size="large" color={T.amber} />
       </SafeAreaView>
     );
@@ -142,7 +148,7 @@ export default function LessonsScreen() {
 
   if (!curriculum) {
     return (
-      <SafeAreaView style={[S.root, { justifyContent: "center", alignItems: "center", paddingHorizontal: 36 }]}>
+      <SafeAreaView style={[S.root, { justifyContent: "center", alignItems: "center", paddingHorizontal: 36, backgroundColor: theme.bg }]}>
         <View style={S.emptyIcon}>
           <Ionicons name="book-outline" size={32} color={T.muted} />
         </View>
@@ -157,7 +163,7 @@ export default function LessonsScreen() {
   const progressPct = stats.total > 0 ? stats.completed / stats.total : 0;
 
   return (
-    <SafeAreaView style={S.root} edges={["top"]}>
+    <SafeAreaView style={[S.root, { backgroundColor: theme.bg }]} edges={["top"]}>
       <ScrollView
         contentContainerStyle={S.scroll}
         showsVerticalScrollIndicator={false}
@@ -287,6 +293,23 @@ export default function LessonsScreen() {
               ))}
             </ScrollView>
           </>
+        )}
+
+        {/* ── AI Chat (if purchased) ───────────────────────────────────── */}
+        {chatUnlocked && (
+          <Pressable
+            onPress={() => router.push({ pathname: "/chatbot", params: { lang: langCode } })}
+            style={S.aiChatCard}
+          >
+            <View style={[S.aiChatIcon, { backgroundColor: "rgba(14,165,233,0.12)" }]}>
+              <Ionicons name="chatbubble-ellipses" size={20} color="#0EA5E9" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={S.aiChatTitle}>AI Assistant</Text>
+              <Text style={S.aiChatSub}>Ask about grammar, vocab, or anything</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={T.muted2} />
+          </Pressable>
         )}
 
         {/* ── Units ────────────────────────────────────────────────────── */}
@@ -631,4 +654,19 @@ const S = StyleSheet.create({
     borderColor: T.amber,
   },
   funBtnText: { fontFamily: F.sansBold, fontSize: 11, color: T.amber, letterSpacing: 0.5 },
+
+  // AI Chat card
+  aiChatCard: {
+    flexDirection: "row" as const, alignItems: "center" as const, gap: 12,
+    backgroundColor: T.card, borderRadius: 16, padding: 14, marginBottom: 20,
+    borderWidth: 0.5, borderColor: T.hair,
+    shadowColor: T.ink, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 8, elevation: 2,
+  },
+  aiChatIcon: {
+    width: 40, height: 40, borderRadius: 12,
+    alignItems: "center" as const, justifyContent: "center" as const,
+  },
+  aiChatTitle: { fontFamily: F.sansBold, fontSize: 14, color: T.ink },
+  aiChatSub: { fontFamily: F.sans, fontSize: 12, color: T.muted, marginTop: 1 },
 });

@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Platform, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
+import { useAppTheme } from "@/lib/theme-context";
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -28,13 +29,19 @@ const VISIBLE_TABS: TabConfig[] = [
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { theme } = useAppTheme();
+  const isDark = theme.isDark;
+  const tabBg = isDark ? theme.card : PAPER_TINT;
+  const tabBorder = isDark ? theme.border : "rgba(17,16,16,0.08)";
+  const activeColor = isDark ? theme.accent : AMBER;
+  const inactiveColor = isDark ? theme.muted : MUTED;
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: AMBER,
-        tabBarInactiveTintColor: MUTED,
+        tabBarActiveTintColor: activeColor,
+        tabBarInactiveTintColor: inactiveColor,
         tabBarStyle: {
           position: "absolute",
           left: 20,
@@ -42,15 +49,15 @@ export default function TabLayout() {
           bottom: insets.bottom + 10,
           height: 68,
           borderRadius: 26,
-          backgroundColor: Platform.OS === "ios" ? "transparent" : PAPER_TINT,
+          backgroundColor: Platform.OS === "ios" ? "transparent" : tabBg,
           borderTopWidth: 0,
           shadowColor: "#000000",
           shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.14,
+          shadowOpacity: isDark ? 0.3 : 0.14,
           shadowRadius: 24,
           elevation: 20,
           borderWidth: 0.5,
-          borderColor: "rgba(17,16,16,0.08)",
+          borderColor: tabBorder,
           paddingTop: 4,
           paddingBottom: 4,
           overflow: "visible",
@@ -75,14 +82,14 @@ export default function TabLayout() {
         tabBarBackground: () =>
           Platform.OS === "ios" ? (
             <BlurView
-              tint="systemUltraThinMaterialLight"
+              tint={isDark ? "systemUltraThinMaterialDark" : "systemUltraThinMaterialLight"}
               intensity={80}
               style={[
                 StyleSheet.absoluteFill,
                 {
                   borderRadius: 26,
                   overflow: "hidden",
-                  backgroundColor: "rgba(243,237,227,0.55)",
+                  backgroundColor: isDark ? "rgba(20,20,30,0.70)" : "rgba(243,237,227,0.55)",
                 },
               ]}
             />
@@ -101,7 +108,7 @@ export default function TabLayout() {
                   width: 50,
                   height: 38,
                   borderRadius: 14,
-                  backgroundColor: focused ? "rgba(168,93,46,0.12)" : "transparent",
+                  backgroundColor: focused ? (isDark ? theme.accentSoft : "rgba(168,93,46,0.12)") : "transparent",
                   alignItems: "center",
                   justifyContent: "center",
                 }}

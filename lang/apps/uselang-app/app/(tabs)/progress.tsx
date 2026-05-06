@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  Alert,
+  Pressable,
+  Share,
   View,
   Text,
   ScrollView,
@@ -14,9 +17,13 @@ import {
   getProgressSummary,
   getLevel,
   LEVEL_UNLOCKS,
+  getActivityLog,
+  exportProgressData,
   type ProgressSummary,
+  type ActivityEntry,
 } from "@/lib/progress-store";
 import { getCoinBalance } from "@/lib/challenge-store";
+import { useAppTheme } from "@/lib/theme-context";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -41,16 +48,31 @@ const F = {
   sansBold: "Geist-Bold",
 };
 
+function formatTimeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return `${Math.floor(days / 7)}w ago`;
+}
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 export default function ProgressScreen() {
+  const { theme } = useAppTheme();
   const [summary, setSummary] = useState<ProgressSummary | null>(null);
   const [spheres, setSpheres] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [activities, setActivities] = useState<ActivityEntry[]>([]);
 
   const load = useCallback(async () => {
-    const [s, bal] = await Promise.all([getProgressSummary(), getCoinBalance()]);
+    const [s, bal, acts] = await Promise.all([getProgressSummary(), getCoinBalance(), getActivityLog(15)]);
     setSummary(s);
     setSpheres(bal);
+    setActivities(acts);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -67,7 +89,7 @@ export default function ProgressScreen() {
   const confidence = summary?.confidence ?? 0;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={["top"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={["top"]}>
       <ScrollView
         contentContainerStyle={{ paddingBottom: 60 }}
         showsVerticalScrollIndicator={false}
@@ -159,6 +181,63 @@ export default function ProgressScreen() {
             </Animated.View>
           );
         })}
+
+        {/* ── Recent Activity ──────────────────────────────────── */}
+        <View style={S.sectionHeader}>
+          <Text style={S.sectionEye}>RECENT ACTIVITY</Text>
+          <Pressable
+            onPress={async () => {
+              try {
+                const data = await exportProgressData();
+                await Share.share({ message: data, title: "UseLang Progress" });
+              } catch {
+                Alert.alert("Export Failed", "Could not export progress data.");
+              }
+            }}
+            hitSlop={12}
+          >
+            <Ionicons name="share-outline" size={18} color={C.cocoa} />
+          </Pressable>
+        </View>
+
+        {activities.length === 0 ? (
+          <View style={S.emptyActivity}>
+            <Ionicons name="time-outline" size={28} color={C.muted} />
+            <Text style={S.emptyActivityText}>No recent activity yet.{"\n"}Start a lesson or play a game!</Text>
+          </View>
+        ) : (
+          activities.map((act, idx) => {
+            const icons: Record<string, string> = {
+              lesson: "book-outline", game: "game-controller-outline",
+              practice: "mic-outline", exam: "school-outline",
+              challenge: "trophy-outline", shop: "cart-outline",
+            };
+            const colors: Record<string, string> = {
+              lesson: C.cocoa, game: "#8B5CF6", practice: C.accent,
+              exam: "#EF4444", challenge: C.gold, shop: "#14B8A6",
+            };
+            const ico = icons[act.type] || "ellipse-outline";
+            const col = colors[act.type] || C.muted;
+            const ago = formatTimeAgo(act.ts);
+            return (
+              <Animated.View key={act.id} entering={FadeInDown.delay(idx * 40).duration(300)}>
+                <View style={S.actRow}>
+                  <View style={[S.actIcon, { backgroundColor: col + "14" }]}>
+                    <Ionicons name={ico as any} size={16} color={col} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={S.actLabel}>{act.label}</Text>
+                    <Text style={S.actDetail}>{act.detail}</Text>
+                  </View>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={S.actTime}>{ago}</Text>
+                    {act.xp ? <Text style={S.actXp}>+{act.xp} XP</Text> : null}
+                  </View>
+                </View>
+              </Animated.View>
+            );
+          })
+        )}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -254,4 +333,30 @@ const S = StyleSheet.create({
     backgroundColor: "rgba(34,197,94,0.10)",
     alignItems: "center", justifyContent: "center",
   },
+
+  // Recent activity
+  emptyActivity: {
+    alignItems: "center" as const, paddingVertical: 30, paddingHorizontal: 20,
+    marginHorizontal: 20, backgroundColor: C.card, borderRadius: 16,
+    borderWidth: 0.5, borderColor: C.border, gap: 8,
+  },
+  emptyActivityText: {
+    fontFamily: F.sans, fontSize: 13, color: C.muted, textAlign: "center" as const, lineHeight: 18,
+  },
+  actRow: {
+    flexDirection: "row" as const, alignItems: "center" as const, gap: 12,
+    paddingHorizontal: 20, paddingVertical: 10, marginHorizontal: 20,
+    backgroundColor: C.card, borderRadius: 14, marginBottom: 6,
+    borderWidth: 0.5, borderColor: C.border,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03, shadowRadius: 4, elevation: 1,
+  },
+  actIcon: {
+    width: 34, height: 34, borderRadius: 10,
+    alignItems: "center" as const, justifyContent: "center" as const,
+  },
+  actLabel: { fontFamily: F.sansSemi, fontSize: 13, color: C.ink },
+  actDetail: { fontFamily: F.sans, fontSize: 11, color: C.muted, marginTop: 1 },
+  actTime: { fontFamily: F.sans, fontSize: 10, color: C.muted },
+  actXp: { fontFamily: F.sansBold, fontSize: 11, color: C.green, marginTop: 1 },
 });

@@ -36,7 +36,7 @@ const C = {
   amber: "#A85D2E",
 };
 
-type FilterRarity = "all" | "common" | "uncommon" | "rare" | "legendary";
+type FilterRarity = "all" | "common" | "uncommon" | "rare" | "legendary" | "mythic";
 
 export default function CollectionScreen() {
   const router = useRouter();
@@ -73,7 +73,7 @@ export default function CollectionScreen() {
   const entries = Object.values(grouped)
     .filter((e) => filter === "all" || e.card.rarity === filter)
     .sort((a, b) => {
-      const order = { common: 0, uncommon: 1, rare: 2, legendary: 3 };
+      const order: Record<string, number> = { common: 0, uncommon: 1, rare: 2, legendary: 3, mythic: 4 };
       return order[b.card.rarity] - order[a.card.rarity];
     });
 
@@ -100,7 +100,7 @@ export default function CollectionScreen() {
     );
   }, [load]);
 
-  const filters: FilterRarity[] = ["all", "common", "uncommon", "rare", "legendary"];
+  const filters: FilterRarity[] = ["all", "common", "uncommon", "rare", "legendary", "mythic"];
 
   return (
     <SafeAreaView style={S.safe} edges={["top"]}>
@@ -260,11 +260,11 @@ const S = StyleSheet.create({
     gap: 8, flexDirection: "row",
   },
   filterPill: {
-    paddingHorizontal: 14, paddingVertical: 7,
+    paddingHorizontal: 12, paddingVertical: 4,
     borderRadius: 99, backgroundColor: C.card,
     borderWidth: 0.5, borderColor: C.border,
   },
-  filterPillText: { fontSize: 13, fontWeight: "600", color: C.inkSub },
+  filterPillText: { fontSize: 12, fontWeight: "600", color: C.inkSub },
 
   grid: { paddingHorizontal: 18, gap: 10 },
   cardItem: {

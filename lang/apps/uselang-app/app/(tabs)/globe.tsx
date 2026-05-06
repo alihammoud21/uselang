@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Dimensions, Pressable, Modal, StyleSheet } from
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { COLORS, SUPPORTED_LANGUAGES } from "@/lib/constants";
+import { useAppTheme } from "@/lib/theme-context";
 import { LANGUAGE_REACH } from "@/components/NativeGlobe";
 import { AppleMapGlobe } from "@/components/AppleMapGlobe";
 import { getUserProfile } from "@/lib/user-store";
@@ -32,6 +33,7 @@ const TIER_TEXT: Record<MapLocationTier, string> = {
 };
 
 export default function GlobeScreen() {
+  const { theme } = useAppTheme();
   const [knownLanguages, setKnownLanguages] = useState<string[]>(["en"]);
   const [learningLang, setLearningLang] = useState("zh");
   const [langProgress, setLangProgress] = useState<LanguageProgress | null>(null);
@@ -71,10 +73,10 @@ export default function GlobeScreen() {
   }, [knownLanguages]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }} edges={["top"]}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={["top"]}>
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 40, backgroundColor: COLORS.bg }}
-        style={{ backgroundColor: COLORS.bg }}
+        contentContainerStyle={{ paddingBottom: 40, backgroundColor: theme.bg }}
+        style={{ backgroundColor: theme.bg }}
         showsVerticalScrollIndicator={false}
       >
         {/* ── Globe — Apple Maps satellite globe ──────────────────────── */}
@@ -141,7 +143,7 @@ export default function GlobeScreen() {
         </View>
 
         {/* ── Title (below globe, on the cream bg) ──────────────────── */}
-        <View style={{ paddingHorizontal: 22, paddingTop: 18, backgroundColor: COLORS.bg }}>
+        <View style={{ paddingHorizontal: 22, paddingTop: 18, backgroundColor: theme.bg }}>
           <Text style={{ fontSize: 26, fontWeight: "800", color: COLORS.text, letterSpacing: -0.6 }}>
             Every language opens{"\n"}new countries.
           </Text>
