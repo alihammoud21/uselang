@@ -8,7 +8,12 @@ An AI-powered language learning app built with Expo (React Native). Learn Spanis
 - **Phrase Mode** — master phrases chunk by chunk with AI feedback
 - **Live Lang** — continuous live translator (Gemma-powered, no stubs)
 - **Lessons** — structured curriculum for Spanish, French, Mandarin
+- **AI Chatbot** — conversational AI assistant for grammar, vocab, culture & more
 - **Globe** — unlock real-world locations as you progress
+- **Games** — Flappy Sphere, Memory Match, Word Chase, Character Draw & more
+- **Shop** — postcard packs, cosmetics, boosts, and game unlocks
+- **Daily Spin** — free daily reward wheel popup on app open
+- **Battle Pass** — level milestones with sphere, hint & badge rewards
 - **100% offline AI** — Gemma 4 E2B runs on-device via LiteRT-LM
 
 ---
@@ -84,6 +89,12 @@ When you first open Live Lang or the AI tutor, the app will prompt you to downlo
 ```
 app/              Expo Router screens (tabs + modals)
   (tabs)/         Main tab screens (Today, Speak/Train, Map, Learn, Settings)
+  chatbot.tsx     AI chatbot assistant
+  battle-pass.tsx Level milestone rewards
+  flappy.tsx      Flappy Sphere game
+  draw-game.tsx   Character Draw game
+  shop.tsx        Shop (packs, games, cosmetics)
+  collection.tsx  Postcard collection browser
   live.tsx        Live Lang translator
   quick-session.tsx  Quick pronunciation session
   phrase-lesson.tsx  Phrase chunk-by-chunk mode
