@@ -1733,8 +1733,10 @@ export function stubChat(messages: ChatMessage[]): string {
       }
       return result;
     }
-    // Empty result — return empty so caller can try Gemma or other fallback
-    return "";
+    // Empty result — return the source text back with a note so translation never silently fails
+    const srcText = user.trim();
+    if (srcText) return srcText;
+    return "[translation unavailable in offline mode]";
   }
 
   // ── Chatbot / conversational mode ────────────────────────────
@@ -1795,6 +1797,19 @@ function stubChatResponse(user: string, system: string): string {
       fr: "De rien ! — You're welcome!",
     };
     return `You're welcome! In ${langName}:\n\n${phrases[lang] || "You're welcome!"}\n\nKeep up the great work! 🌟`;
+  }
+
+  // "I don't understand" — lesson-specific help
+  if (/don'?t understand|confused|not getting it|help me|stuck|lost|what does|what is|explain/i.test(u)) {
+    const lessonMatch = system.match(/lesson[^"]*"([^"]+)"/i);
+    const lessonName = lessonMatch?.[1];
+    const intro = lessonName ? `I see you're working on "${lessonName}" — let me break it down!` : `No problem! Let me explain step by step.`;
+    const tips: Record<string, string> = {
+      zh: `${intro}\n\nIn Mandarin, every concept builds on a few basics:\n\n1. **Tones** — Mandarin has 4 tones. The same sound means different things depending on tone.\n   • mā (妈) = mom  |  má (麻) = hemp  |  mǎ (马) = horse  |  mà (骂) = scold\n\n2. **No conjugations** — verbs never change. 我吃 (I eat), 他吃 (he eats) — same verb!\n\n3. **Measure words** — before counting objects you need a measure word:\n   • 一个人 (one person) — 个 is the measure word\n   • 一本书 (one book) — 本 is for bound things\n\nWhat specific part of the lesson is confusing you? I'll explain it clearly! 😊`,
+      es: `${intro}\n\nLet's break it down simply:\n\n1. **Verb conjugation** — verbs change based on who does the action:\n   • yo hablo, tú hablas, él habla (I speak, you speak, he speaks)\n\n2. **Gender** — every noun is masculine (el) or feminine (la):\n   • el libro (the book, masc.) | la mesa (the table, fem.)\n\n3. **Ser vs. Estar** — both mean "to be" but used differently:\n   • Ser = permanent (Soy estudiante — I am a student)\n   • Estar = temporary (Estoy cansado — I am tired)\n\nWhat part is tripping you up? Tell me and I'll explain! 😊`,
+      fr: `${intro}\n\nLet me simplify it:\n\n1. **Gender** — every noun is masculine (le) or feminine (la):\n   • le livre (the book, masc.) | la voiture (the car, fem.)\n\n2. **Verb groups** — French verbs fall into 3 groups (-er, -ir, -re):\n   • parler → je parle, tu parles, il parle\n\n3. **Silent letters** — many final consonants are silent:\n   • petit → puh-TEE (the 't' is silent)\n\nWhat specifically confused you? Ask me anything! 😊`,
+    };
+    return tips[lang] || `${intro}\n\nLanguage learning takes time — you're doing great by asking questions! Could you tell me:\n\n• Which word or phrase confused you?\n• Was it the grammar or the pronunciation?\n\nI'll give you a clear, step-by-step explanation! 😊`;
   }
 
   // Grammar questions

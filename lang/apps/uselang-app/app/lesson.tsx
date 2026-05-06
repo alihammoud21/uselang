@@ -657,11 +657,15 @@ export default function LessonScreen() {
               <Pressable
                 onPress={goNext}
                 style={({ pressed }) => ({
-                  backgroundColor: isCorrect ? AMBER : INK,
-                  paddingVertical: 15,
+                  backgroundColor: AMBER,
+                  paddingVertical: 16,
                   borderRadius: 14,
                   alignItems: "center",
                   opacity: pressed ? 0.88 : 1,
+                  shadowColor: AMBER,
+                  shadowOffset: { width: 0, height: 3 },
+                  shadowOpacity: 0.30,
+                  shadowRadius: 8,
                 })}
               >
                 <Text style={{ fontFamily: F.sansSemi, fontSize: 16, color: "#FFF", letterSpacing: 0.1 }}>Continue</Text>

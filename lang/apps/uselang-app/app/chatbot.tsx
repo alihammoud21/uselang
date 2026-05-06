@@ -40,20 +40,38 @@ interface Message {
   ts: number;
 }
 
+const LANG_NAMES: Record<string, string> = {
+  zh: "Mandarin Chinese", es: "Spanish", fr: "French", en: "English", ja: "Japanese", ko: "Korean",
+};
+
+function buildTutorPrompt(lang: string, context?: string): string {
+  const langName = LANG_NAMES[lang] || lang;
+  return `You are a personal language tutor inside a mobile app called UseLang. The user is learning ${langName}.
+
+Your role:
+- Teach grammar rules clearly with examples in both ${langName} and English
+- Explain vocabulary with usage examples and memory tips
+- Help with pronunciation using phonetic guides
+- If the user says they don't understand something, break it down step by step
+- Correct mistakes kindly and explain why something is wrong
+- Use tables or bullet points when listing grammar rules or conjugations
+- Be warm, encouraging, and thorough — don't cut answers short
+${context ? `\nLesson context: The user is currently on lesson "${context}". Tailor help to this topic if relevant.` : ""}
+
+Always reply in English unless the user asks you to reply in ${langName}.`;
+}
+
 const SYSTEM_PROMPTS: Record<Mode, string> = {
-  tutor: `You are a language tutor inside a language learning app. The user is learning a new language. 
-Answer questions about grammar, vocabulary, pronunciation, and culture. 
-When possible, include examples in the target language with translations.
-Be encouraging, concise, and helpful. Keep responses under 150 words.
-If the user writes in their target language, correct any mistakes gently and explain.`,
-  general: `You are a helpful AI assistant inside a language learning app called UseLang.
-Answer any question the user asks — math, science, general knowledge, coding, life advice, etc.
-Be concise and helpful. Keep responses under 150 words.`,
+  tutor: "", // dynamically built per-request using buildTutorPrompt
+  general: `You are a helpful personal AI assistant inside a language learning app called UseLang.
+Answer any question the user asks — language help, math, science, coding, life advice, culture, history, etc.
+Be thorough and genuinely helpful. Use examples, bullet points, or tables where they add clarity.
+Don't cut answers short — give complete, useful responses.`,
 };
 
 export default function ChatbotScreen() {
   const router = useRouter();
-  const { lang = "zh" } = useLocalSearchParams<{ lang?: string }>();
+  const { lang = "zh", context = "" } = useLocalSearchParams<{ lang?: string; context?: string }>();
   const [mode, setMode] = useState<Mode>("tutor");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -86,8 +104,9 @@ export default function ChatbotScreen() {
     setGenerating(true);
 
     // Build context
+    const systemContent = mode === "tutor" ? buildTutorPrompt(lang, context || "") : SYSTEM_PROMPTS.general;
     const chatHistory: ChatMessage[] = [
-      { role: "system", content: SYSTEM_PROMPTS[mode] + (mode === "tutor" ? `\nThe user is learning: ${lang}` : "") },
+      { role: "system", content: systemContent },
       ...next.slice(-10).map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.text,

@@ -64,6 +64,15 @@ const CATEGORY_LABELS: Record<ItemCategory | "all", string> = {
   cosmetic: "Cosmetic",
 };
 
+// ── Admin redeem codes (module-level to avoid stale closure) ────────────────
+const ADMIN_CODES: Record<string, { label: string; coins: number; unlockAll: boolean; godMode?: boolean }> = {
+  "USELANG-GOD":        { label: "God Mode",     coins: 999999,  unlockAll: true, godMode: true },
+  "USELANG-ADMIN-2025": { label: "Admin Access", coins: 99999,   unlockAll: true },
+  "USELANG-TESTER":     { label: "Tester Pack",  coins: 10000,   unlockAll: false },
+  "USELANG-BETA":       { label: "Beta Reward",  coins: 5000,    unlockAll: false },
+  "USELANG-MILLION":    { label: "Millionaire",  coins: 1000000, unlockAll: false },
+};
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function ShopScreen() {
@@ -190,13 +199,6 @@ export default function ShopScreen() {
   const [redeemCode, setRedeemCode] = useState("");
   const [redeemExpanded, setRedeemExpanded] = useState(false);
 
-  const ADMIN_CODES: Record<string, { label: string; coins: number; unlockAll: boolean; godMode?: boolean }> = {
-    "USELANG-GOD":         { label: "God Mode",      coins: 999999, unlockAll: true, godMode: true },
-    "USELANG-ADMIN-2025":  { label: "Admin Access",  coins: 99999,  unlockAll: true },
-    "USELANG-TESTER":      { label: "Tester Pack",   coins: 10000,  unlockAll: false },
-    "USELANG-BETA":        { label: "Beta Reward",   coins: 5000,   unlockAll: false },
-  };
-
   const handleRedeem = useCallback(async () => {
     const code = redeemCode.trim().toUpperCase();
     if (!code) return;
@@ -304,7 +306,7 @@ export default function ShopScreen() {
                       style={({ pressed }) => [S.gameCard, pressed && { opacity: 0.88, transform: [{ scale: 0.97 }] }]}
                     >
                       <View style={[S.gameCardTop, { backgroundColor: game.iconBg.replace("0.12", "0.25") }]}>
-                        <Ionicons name={game.icon as any} size={40} color={game.iconColor} />
+                        <Ionicons name={game.icon as any} size={26} color={game.iconColor} />
                         {isUnlocked && (
                           <View style={S.gameUnlockedBadge}>
                             <Ionicons name="checkmark-circle" size={12} color="#22C55E" />
@@ -452,12 +454,14 @@ export default function ShopScreen() {
                   <Text style={S.myItemLabel}>{g.name}</Text>
                 </Pressable>
               ))}
-              {/* Lyrics */}
-              {owned.includes("lyrics_pack" as ShopItemId) && (
-                <Pressable onPress={() => router.push({ pathname: "/lyrics" as any, params: { lang: langCode } })} style={S.myItemChip}>
-                  <Ionicons name="musical-notes-outline" size={16} color="#EC4899" />
-                  <Text style={S.myItemLabel}>Lyrics</Text>
-                </Pressable>
+              {/* Lyrics — one chip per purchased language */}
+              {(["zh", "es", "fr"] as const).map((lc) =>
+                owned.includes(`lyrics_${lc}` as ShopItemId) ? (
+                  <Pressable key={lc} onPress={() => router.push({ pathname: "/lyrics" as any, params: { lang: lc } })} style={S.myItemChip}>
+                    <Ionicons name="musical-notes-outline" size={16} color="#EC4899" />
+                    <Text style={S.myItemLabel}>{lc === "zh" ? "Mandarin Lyrics" : lc === "es" ? "Spanish Lyrics" : "French Lyrics"}</Text>
+                  </Pressable>
+                ) : null
               )}
               {/* Chatbot */}
               {owned.includes("chatbot_assistant" as ShopItemId) && (
@@ -550,20 +554,20 @@ const S = StyleSheet.create({
 
   // ── Game Cards ──
   gameCard: {
-    width: SW * 0.52, backgroundColor: C.card, borderRadius: 20, overflow: "hidden",
+    width: SW * 0.38, backgroundColor: C.card, borderRadius: 16, overflow: "hidden",
     borderWidth: 0.5, borderColor: C.border,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.10, shadowRadius: 10, elevation: 3,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 6, elevation: 2,
   },
-  gameCardTop: { height: 90, alignItems: "center", justifyContent: "center", position: "relative" },
+  gameCardTop: { height: 68, alignItems: "center", justifyContent: "center", position: "relative" },
   gameUnlockedBadge: {
     position: "absolute", top: 8, right: 8,
     flexDirection: "row", alignItems: "center", gap: 4,
     backgroundColor: "rgba(34,197,94,0.18)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99,
   },
   gameUnlockedText: { fontSize: 11, fontWeight: "700", color: "#22C55E" },
-  gameCardBottom: { padding: 14 },
-  gameCardName: { fontSize: 15, fontWeight: "700", color: C.ink, letterSpacing: -0.2 },
-  gameCardDesc: { fontSize: 11, color: C.inkSub, lineHeight: 15, marginTop: 3 },
+  gameCardBottom: { padding: 10 },
+  gameCardName: { fontSize: 13, fontWeight: "700", color: C.ink, letterSpacing: -0.2 },
+  gameCardDesc: { fontSize: 10, color: C.inkSub, lineHeight: 14, marginTop: 2 },
   gameCardPrice: {
     marginTop: 10, alignSelf: "flex-start",
     backgroundColor: C.goldBg, paddingHorizontal: 12, paddingVertical: 5, borderRadius: 99,
@@ -606,14 +610,14 @@ const S = StyleSheet.create({
   packSectionTitle: { fontSize: 11, fontWeight: "700", letterSpacing: 1.2, color: C.muted },
   packCollectionCount: { fontSize: 12, fontWeight: "600", color: C.amber },
   packCard: {
-    width: 170, backgroundColor: C.card, borderRadius: 18, overflow: "hidden",
+    width: 138, backgroundColor: C.card, borderRadius: 14, overflow: "hidden",
     borderWidth: 0.5, borderColor: C.border,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.10, shadowRadius: 10, elevation: 3,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 6, elevation: 2,
   },
-  packCardGradient: { height: 68, alignItems: "center", justifyContent: "center" },
-  packCardBody: { padding: 12 },
-  packCardName: { fontSize: 13, fontWeight: "700", color: C.ink, letterSpacing: -0.2 },
-  packCardDesc: { fontSize: 11, color: C.inkSub, lineHeight: 15, marginTop: 3 },
+  packCardGradient: { height: 50, alignItems: "center", justifyContent: "center" },
+  packCardBody: { padding: 10 },
+  packCardName: { fontSize: 12, fontWeight: "700", color: C.ink, letterSpacing: -0.2 },
+  packCardDesc: { fontSize: 10, color: C.inkSub, lineHeight: 14, marginTop: 2 },
   packCardPrice: { marginTop: 8, alignSelf: "flex-start", backgroundColor: C.goldBg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99 },
   packCardPriceText: { fontSize: 12, fontWeight: "700", color: "#8A6200" },
 

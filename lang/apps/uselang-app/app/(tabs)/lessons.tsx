@@ -15,7 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getUserProfile } from "@/lib/user-store";
-import { isChatbotUnlocked } from "@/lib/shop-store";
+import { isChatbotUnlocked, isLyricsUnlocked } from "@/lib/shop-store";
 import { useAppTheme } from "@/lib/theme-context";
 import { getCurriculum } from "@/data/lessons";
 import { getCoinBalance, spendCoins, getChallenges } from "@/lib/challenge-store";
@@ -75,6 +75,7 @@ export default function LessonsScreen() {
   const [completedMissions, setCompletedMissions] = useState(0);
   const [examUnlocked, setExamUnlocked] = useState(false);
   const [chatUnlocked, setChatUnlocked] = useState(false);
+  const [lyricsUnlocked, setLyricsUnlocked] = useState(false);
   const langCodeRef = useRef(""); // stable ref for subscriber closure
 
   const switchToLang = useCallback(async (code: string) => {
@@ -115,6 +116,8 @@ export default function LessonsScreen() {
     setCompletedMissions(chs.filter((c) => c.completed).length);
     setExamUnlocked(unlockFlag === "1");
     setChatUnlocked(chatFlag);
+    const lc = langCodeRef.current.slice(0, 2) as "zh" | "es" | "fr";
+    isLyricsUnlocked(lc).then(setLyricsUnlocked).catch(() => {});
   }, []);
 
   useFocusEffect(useCallback(() => { loadExamMeta(); }, [loadExamMeta]));
@@ -294,6 +297,26 @@ export default function LessonsScreen() {
             </ScrollView>
           </>
         )}
+
+        {/* ── Lyric Cards row ────────────────────────────────────── */}
+        <Pressable
+          onPress={() => lyricsUnlocked
+            ? router.push({ pathname: "/lyrics", params: { lang: langCode.slice(0, 2) } } as any)
+            : router.push("/shop" as any)
+          }
+          style={S.aiChatCard}
+        >
+          <View style={[S.aiChatIcon, { backgroundColor: "rgba(236,72,153,0.12)" }]}>
+            <Ionicons name="musical-notes" size={20} color="#EC4899" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={S.aiChatTitle}>Lyric Cards</Text>
+            <Text style={S.aiChatSub}>{lyricsUnlocked ? "Line-by-line songs with vocab" : "Unlock in shop — 150 spheres"}</Text>
+          </View>
+          {lyricsUnlocked
+            ? <Ionicons name="chevron-forward" size={16} color={T.muted2} />
+            : <Ionicons name="lock-closed-outline" size={16} color={T.muted2} />}
+        </Pressable>
 
         {/* ── AI Chat (if purchased) ───────────────────────────────────── */}
         {chatUnlocked && (
