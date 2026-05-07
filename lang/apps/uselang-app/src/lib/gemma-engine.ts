@@ -25,26 +25,80 @@
 
 // Dynamic import — native module may not exist (Expo Go, missing pods, etc.)
 // If it fails, the engine falls back to the deterministic stub automatically.
-let createLLM: any = null;
-let GEMMA_4_E2B_IT: any = null;
+let initLlama: ((opts: any) => Promise<any>) | null = null;
 try {
-  const mod = require("react-native-litert-lm");
-  createLLM = mod.createLLM;
-  GEMMA_4_E2B_IT = mod.GEMMA_4_E2B_IT;
+  const mod = require("llama.rn");
+  initLlama = mod.initLlama;
+  console.log("[gemma-engine] llama.rn native module detected");
 } catch (e) {
-  console.warn("[gemma-engine] react-native-litert-lm not available — will use stub fallback");
+  console.warn("[gemma-engine] llama.rn not available -- will use stub fallback");
 }
+import * as FileSystem from "expo-file-system";
 import { stubChat, stubGenerateTutorJson, getCuratedPhonetic, stripQuestionWrapper, labelToCode, pinyinToSayLike, getMandariTipForPinyin, composeLocalTranslation, lookupChinesePinyin } from "./gemma-stub";
-import { runWithTimeout, TimeoutError } from "./safe-async";
 
-// ── Timeouts & concurrency ────────────────────────────────────────────────
-const GEMMA_GENERATE_TIMEOUT_MS = 25_000;
-const MAX_PROMPT_CHARS = 1200; // LiteRT-LM handles larger prompts than ExecuTorch
-const MAX_CONSECUTIVE_FAILURES = 5; // auto-switch to stub after this many failures in a row
-const FAILURE_RESET_MS = 30_000; // reset failure counter after 30s of no failures
-let inFlightGenerate: Promise<string> | null = null;
+// ── Model tiers ───────────────────────────────────────────────────────────────
+// Official ggml-org models (llama.cpp project) -- guaranteed llama.rn compatible.
+// Primary : Gemma 3 1B IT Q4_K_M -- 806 MB, fast download, all devices
+// Fallback: same as primary (single reliable model)
+// High-end: Gemma 3 4B IT Q4_K_M -- ~2.5 GB, better tutoring quality
+const MODEL_DIR = (FileSystem.documentDirectory ?? "") + "models/";
+
+const MODELS = {
+  primary: {
+    file: "gemma-3-1b-it-Q4_K_M.gguf",
+    url: "https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf",
+    label: "Gemma 3 1B",
+    minRamMb: 0,
+  },
+  fallback: {
+    file: "gemma-3-1b-it-Q4_K_M.gguf",
+    url: "https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf",
+    label: "Gemma 3 1B",
+    minRamMb: 0,
+  },
+  highEnd: {
+    file: "gemma-3-4b-it-Q4_K_M.gguf",
+    url: "https://huggingface.co/ggml-org/gemma-3-4b-it-GGUF/resolve/main/gemma-3-4b-it-Q4_K_M.gguf",
+    label: "Gemma 3 4B",
+    minRamMb: 4000,
+  },
+} as const;
+
+type ModelTier = keyof typeof MODELS;
+
+// ── Stop words & output sanitizer ─────────────────────────────────────────────
+// Note: ["<", "/s>"].join("") builds the stop token at runtime to avoid
+// XML-parser corruption when this source is embedded in tool parameters.
+const STOP_WORDS = [
+  "<end_of_turn>",
+  "<eos>",
+  "<|end|>",
+  "<|eot_id|>",
+  "<|end_of_text|>",
+  "<|im_end|>",
+  "<|EOT|>",
+  ["<", "/s>"].join(""),
+];
+
+function sanitizeOutput(text: string): string {
+  return text
+    .replace(/<end_of_turn>/g, "")
+    .replace(/<\/s>/g, "")
+    .replace(/<eos>/g, "")
+    .replace(/<\|end\|>/g, "")
+    .replace(/<\|eot_id\|>/g, "")
+    .replace(/<\|im_end\|>/g, "")
+    .trim();
+}
+
+// ── Runtime state ─────────────────────────────────────────────────────────────
+const MAX_PROMPT_CHARS = 1200;
+const MAX_CONSECUTIVE_FAILURES = 5;
+const FAILURE_RESET_MS = 30_000;
 let consecutiveFailures = 0;
 let lastFailureAt = 0;
+let llamaContext: any = null;
+let selectedModelTier: ModelTier = "fallback";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -73,28 +127,7 @@ export interface GemmaEngineState {
   diagnostic: string;
 }
 
-// ── LiteRT-LM instance ───────────────────────────────────────────────────
-// createLLM() creates a native LLM handle. loadModel() downloads (once) and
-// loads the weights on the device GPU. sendMessage() runs inference locally.
-let llm: ReturnType<typeof createLLM> | null = null;
-
-function detectLiteRT(): boolean {
-  if (!createLLM) {
-    console.warn("[gemma] INIT: createLLM not available — native module missing");
-    return false;
-  }
-  try {
-    llm = createLLM();
-    console.log("[gemma] INIT: LiteRT-LM native module detected");
-    return true;
-  } catch (e: any) {
-    console.warn("[gemma] INIT: LiteRT-LM native module NOT available:", e?.message);
-    llm = null;
-    return false;
-  }
-}
-
-const HAS_NATIVE = detectLiteRT();
+const HAS_NATIVE = initLlama !== null;
 
 // ── State ──────────────────────────────────────────────────────────────────
 // KEY DESIGN: The stub activates IMMEDIATELY when no native module exists.
@@ -146,7 +179,7 @@ export function isGemmaSupported(): boolean {
  * Does NOT download. Just activates stub or confirms real model.
  */
 export async function loadGemmaModel(): Promise<boolean> {
-  console.log("[gemma] INITIALIZING GEMMA…");
+  console.log("[gemma] INITIALIZING GEMMA...");
   console.log(`[gemma] STATE: loaded=${engineState.loaded}, availability=${engineState.availability}, usingStub=${engineState.usingStub}`);
 
   if (engineState.loaded && engineState.availability === "ready") {
@@ -154,32 +187,8 @@ export async function loadGemmaModel(): Promise<boolean> {
     return true;
   }
 
-  if (engineState.loaded && engineState.usingStub && HAS_NATIVE) {
-    // Native module IS available but we're on stub — try loading the cached model
-    // (e.g. after app rebuild, the JS state resets but the model file persists on disk).
-    console.log("[gemma] Stub active but native module available — attempting auto-load of cached model…");
-    setState({ loaded: false, loading: true });
-    const ok = await tryLoadLiteRT(1);
-    if (ok) {
-      console.log("[gemma] ✅ Auto-loaded cached model successfully");
-      return true;
-    }
-    // Model not cached — stay on stub, don't block the caller
-    console.log("[gemma] Cached model not available — staying on stub. Use downloadAndLoadModel() to download.");
-    activateStub("On-device AI ready. Download model for full quality.");
-    return true;
-  }
-
-  if (engineState.loaded && engineState.usingStub) {
-    console.log("[gemma] MODEL ALREADY LOADED (stub, no native). Use a dev build for GPU inference.");
-    return true;
-  }
-
   if (engineState.loading) {
-    // Another call (e.g. _layout.tsx auto-load) is already loading the model.
-    // WAIT for it to finish instead of returning false and falling to stub.
-    // Poll at 200ms intervals, give up after 30s.
-    console.log("[gemma] Load already in progress — waiting for it to finish…");
+    console.log("[gemma] Load already in progress -- waiting...");
     const deadline = Date.now() + 30_000;
     await new Promise<void>((resolve) => {
       const check = () => {
@@ -192,45 +201,48 @@ export async function loadGemmaModel(): Promise<boolean> {
     return engineState.loaded;
   }
 
-  if (!llm) {
-    console.warn("[gemma] LiteRT-LM native module not available.");
+  if (!initLlama) {
     activateStub("Native module not linked. Use a dev build (expo run:ios) for GPU inference.");
     return true;
   }
 
-  // Native module available but model not downloaded yet.
-  // Activate stub immediately so the current call isn't blocked,
-  // then kick off the real model download in the background.
-  console.log("[gemma] Model not downloaded yet. Activating stub + starting background download…");
-  activateStub("Downloading AI model in background…");
-  // Fire-and-forget: downloadAndLoadModel will upgrade from stub → real once done
-  downloadAndLoadModel().then((ok) => {
-    console.log(`[gemma] Background download finished: ${ok ? "SUCCESS" : "stayed on stub"}`);
-  }).catch((e) => {
-    console.warn("[gemma] Background download error:", e);
-  });
+  // Try to auto-load a cached model file from disk (survives app rebuilds)
+  const tier = selectModelTier();
+  const model = MODELS[tier];
+  const modelPath = MODEL_DIR + model.file;
+  try {
+    const info = await FileSystem.getInfoAsync(modelPath);
+    if (info.exists) {
+      console.log(`[gemma] MODEL FILE FOUND: ${modelPath}`);
+      setState({ loaded: false, loading: true });
+      const ok = await tryLoadModel(tier, modelPath, 1);
+      if (ok) {
+        console.log("[gemma] Auto-loaded cached model successfully");
+        return true;
+      }
+    }
+  } catch { /* ignore */ }
+
+  // Model not on disk -- activate stub and kick off background download
+  console.log("[gemma] Model not downloaded -- activating stub + starting background download...");
+  activateStub("Downloading AI model in background...");
+  downloadAndLoadModel().catch((e) => console.warn("[gemma] Background download error:", e));
   return true;
 }
 
-/**
- * Explicitly trigger download + load of Gemma 4 E2B via LiteRT-LM.
- * Downloads from HuggingFace (~2.5 GB), cached locally, then runs on GPU.
- * Use this from a UI "Download Model" button.
- */
 export async function downloadAndLoadModel(): Promise<boolean> {
-  console.log("[gemma] USER-TRIGGERED DOWNLOAD…");
+  console.log("[gemma] USER-TRIGGERED DOWNLOAD...");
 
   if (engineState.loading) {
-    console.log("[gemma] Load already in progress. Skipping download.");
+    console.log("[gemma] Load already in progress. Skipping.");
     return false;
   }
 
-  if (!llm) {
-    console.warn("[gemma] Cannot download: LiteRT-LM native module not linked.");
+  if (!initLlama) {
     setState({
       error: "Cannot download model: native inference module not linked. Rebuild the app.",
       availability: "needs-native-build",
-      diagnostic: "LiteRT-LM not linked. Cannot download or run models.",
+      diagnostic: "llama.rn not linked. Cannot download or run models.",
     });
     return false;
   }
@@ -240,44 +252,76 @@ export async function downloadAndLoadModel(): Promise<boolean> {
     return true;
   }
 
+  const tier = selectModelTier();
+  const model = MODELS[tier];
+  const modelPath = MODEL_DIR + model.file;
+
   setState({
     loading: true,
     error: null,
     downloadProgress: 0,
     availability: "downloading",
-    diagnostic: "Downloading Gemma 4 E2B from HuggingFace…",
+    diagnostic: `Downloading ${model.label} from HuggingFace...`,
   });
 
-  // ── Attempt 1 ───────────────────────────────────────────────────────
-  const result1 = await tryLoadLiteRT(1);
-  if (result1) return true;
+  try { await FileSystem.makeDirectoryAsync(MODEL_DIR, { intermediates: true }); } catch { /* exists */ }
 
-  // ── Attempt 2 (retry) ───────────────────────────────────────────────
-  console.warn("[gemma] RETRYING model load (attempt 2 of 2)…");
-  setState({ downloadProgress: 0, diagnostic: "Retrying model download…" });
-  const result2 = await tryLoadLiteRT(2);
-  if (result2) return true;
+  const info = await FileSystem.getInfoAsync(modelPath);
+  if (!info.exists) {
+    console.log(`[gemma] DOWNLOADING ${model.label} to ${modelPath}`);
+    const dl = FileSystem.createDownloadResumable(
+      model.url,
+      modelPath,
+      {},
+      (progress) => {
+        const pct = progress.totalBytesExpectedToWrite > 0
+          ? progress.totalBytesWritten / progress.totalBytesExpectedToWrite
+          : 0;
+        console.log(`[gemma] DOWNLOAD PROGRESS: ${Math.round(pct * 100)}%`);
+        setState({ downloadProgress: pct, diagnostic: `Downloading ${model.label}: ${Math.round(pct * 100)}%` });
+      },
+    );
+    try {
+      await dl.downloadAsync();
+      console.log(`[gemma] DOWNLOAD COMPLETE: ${model.label}`);
+    } catch (e: any) {
+      console.warn(`[gemma] DOWNLOAD FAILED: ${e?.message}`);
+      activateStub("Download failed. Tap to retry.");
+      setState({ availability: "download-failed" });
+      return false;
+    }
+  }
 
-  // ── Both attempts failed → stub ────────────────────────────────────
-  const failReason = engineState.error || "Unknown error during model load";
-  console.warn(`[gemma] MODEL LOAD FAILED after 2 attempts: ${failReason}`);
-  activateStub("Download failed. Tap to retry.");
+  const ok1 = await tryLoadModel(tier, modelPath, 1);
+  if (ok1) return true;
+
+  console.warn("[gemma] RETRYING model load (attempt 2 of 2)...");
+  setState({ downloadProgress: 0, diagnostic: "Retrying model load..." });
+  const ok2 = await tryLoadModel(tier, modelPath, 2);
+  if (ok2) return true;
+
+  activateStub("Model load failed. Tap to retry.");
   setState({ availability: "download-failed" });
-  return true;
+  return false;
 }
 
-async function tryLoadLiteRT(attempt: number): Promise<boolean> {
-  if (!llm) return false;
+function selectModelTier(): ModelTier {
+  if (llamaContext !== null) return selectedModelTier;
+  return "primary";
+}
+
+async function tryLoadModel(tier: ModelTier, modelPath: string, attempt: number): Promise<boolean> {
+  if (!initLlama) return false;
   try {
-    console.log(`[gemma] LOADING MODEL via LiteRT-LM… (attempt ${attempt})`);
-    console.log(`[gemma] MODEL: Gemma 4 E2B — ${GEMMA_4_E2B_IT}`);
-
-    await llm.loadModel(GEMMA_4_E2B_IT, {
-      backend: "gpu",
-      systemPrompt: "",
+    console.log(`[gemma] LOADING MODEL ${MODELS[tier].label} (attempt ${attempt})...`);
+    llamaContext = await initLlama({
+      model: modelPath,
+      n_gpu_layers: 99,
+      n_ctx: 2048,
+      n_batch: 512,
     });
-
-    console.log("[gemma] ✅ MODEL LOADED SUCCESSFULLY (LiteRT-LM, GPU)");
+    selectedModelTier = tier;
+    console.log(`[gemma] MODEL LOADED SUCCESSFULLY (${MODELS[tier].label})`);
     setState({
       loaded: true,
       loading: false,
@@ -286,12 +330,13 @@ async function tryLoadLiteRT(attempt: number): Promise<boolean> {
       availability: "ready",
       error: null,
       usingStub: false,
-      diagnostic: "Gemma 4 E2B loaded — GPU inference active.",
+      diagnostic: `${MODELS[tier].label} loaded -- GPU inference active.`,
     });
     return true;
   } catch (e: any) {
     const msg = e?.message || "Unknown error";
     console.warn(`[gemma] MODEL LOAD FAILED (attempt ${attempt}): ${msg}`);
+    llamaContext = null;
     setState({
       error: msg,
       loading: attempt >= 2 ? false : true,
@@ -315,13 +360,12 @@ function activateStub(diagnostic: string): void {
 }
 
 export async function unloadGemmaModel(): Promise<void> {
-  if (!llm || engineState.availability !== "ready") return;
+  if (!llamaContext || engineState.availability !== "ready") return;
   try {
-    llm.close();
+    await llamaContext.release();
+    llamaContext = null;
     console.log("[gemma] Model unloaded.");
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
   setState({
     loaded: false,
     downloadProgress: 0,
@@ -332,102 +376,77 @@ export async function unloadGemmaModel(): Promise<void> {
 }
 
 // ── Chat ───────────────────────────────────────────────────────────────────
-// Single entry point for plain text generation. Both Quick Mode and LiveLang
-// route through this. ALL generation goes through the on-device model.
-// If the real model isn't loaded, the local stub serves deterministic responses.
+// Single entry point for all text generation. Never throws -- always returns
+// a valid string (real model output or stub fallback).
 export async function chatWithGemma(
   messages: ChatMessage[],
   opts: { maxTokens?: number; temperature?: number } = {},
 ): Promise<string> {
-  void opts;
-
   const userContent = messages.find((m) => m.role === "user")?.content || "";
-  console.log("[gemma-engine] MODEL USED:", engineState.usingStub ? "STUB" : "GEMMA-4-E2B");
+  console.log("[gemma-engine] MODEL USED:", engineState.usingStub ? "STUB" : selectedModelTier.toUpperCase());
   console.log("[gemma-engine] GEMMA INPUT:", userContent.slice(0, 200));
 
-  // ── Ensure model is loaded ──────────────────────────────────────────
   if (!engineState.loaded) {
-    console.log("[gemma-engine] Model not loaded yet. Attempting load…");
     await loadGemmaModel();
   }
 
-  // ── Stub path ───────────────────────────────────────────────────────
   if (engineState.usingStub) {
-    console.log("[gemma-engine] USING: Local stub (real model not available)");
     const output = stubChat(messages);
     console.log("[gemma-engine] STUB OUTPUT:", output.slice(0, 200));
     return output;
   }
 
-  // ── Real model path (LiteRT-LM) ───────────────────────────────────
-  if (!llm) {
-    console.warn("[gemma-engine] LiteRT-LM instance missing after load.");
-    activateStub("Native module missing unexpectedly.");
-    throw new Error("LiteRT-LM unavailable after load.");
+  if (!llamaContext) {
+    console.warn("[gemma-engine] llamaContext missing after load -- falling back to stub");
+    activateStub("Context missing unexpectedly.");
+    return stubChat(messages);
   }
 
-  // ── In-flight dedupe ──────────────────────────────────────────────
-  if (inFlightGenerate) {
-    console.log("[gemma-engine] Reusing in-flight generate call (dedupe)");
-    try {
-      return await inFlightGenerate;
-    } catch {
-      // Fall through to fresh attempt
-    }
-  }
-
-  // ── Prompt size safety cap ─────────────────────────────────────────
   const totalChars = messages.reduce((n, m) => n + m.content.length, 0);
+  let cappedMessages = messages;
   if (totalChars > MAX_PROMPT_CHARS) {
-    console.warn(`[gemma-engine] Prompt too large (${totalChars} chars > ${MAX_PROMPT_CHARS}). Truncating.`);
-    messages = messages.map((m) => ({
+    cappedMessages = messages.map((m) => ({
       ...m,
       content: m.content.slice(0, Math.floor(MAX_PROMPT_CHARS / messages.length)),
     }));
   }
 
-  // Build the prompt: system + user content combined for sendMessage
-  const systemPrompt = messages.find((m) => m.role === "system")?.content || "";
-  const userPrompt = messages.find((m) => m.role === "user")?.content || "";
-  const fullPrompt = systemPrompt
-    ? `${systemPrompt}\n\n${userPrompt}`
-    : userPrompt;
-
   const startMs = Date.now();
-  console.log("[gemma-engine] GEMMA START (LiteRT-LM GPU)");
+  console.log(`[gemma-engine] GEMMA START (llama.rn / ${selectedModelTier})`);
 
-  const generateOnce = async (): Promise<string> => {
-    const raw = await runWithTimeout(
-      "gemma.sendMessage",
-      () => llm!.sendMessage(fullPrompt),
-      GEMMA_GENERATE_TIMEOUT_MS,
-    );
-    const output = (typeof raw === "string" ? raw : "").trim();
-    console.log("[gemma-engine] RAW OUTPUT:", output.slice(0, 400));
-    return output;
-  };
-
-  inFlightGenerate = generateOnce();
   try {
-    const output = await inFlightGenerate;
+    let raw = "";
+    await llamaContext.completion(
+      {
+        messages: cappedMessages,
+        n_predict: opts.maxTokens ?? 400,
+        temperature: opts.temperature ?? 0.7,
+        stop: STOP_WORDS,
+      },
+      (token: { token: string }) => { raw += token.token; },
+    );
     const elapsed = Date.now() - startMs;
+    const result = sanitizeOutput(raw);
     console.log(`[gemma-engine] GEMMA SUCCESS ms=${elapsed}`);
-    console.log("[gemma-engine] GEMMA OUTPUT:", output.slice(0, 200));
-
-    if (!output) {
-      console.warn("[gemma-engine] Real model returned empty output.");
-      throw new Error("Gemma returned empty output.");
+    console.log("[gemma-engine] GEMMA OUTPUT:", result.slice(0, 200));
+    if (!result) {
+      console.warn("[gemma-engine] empty output -- falling back to stub");
+      return stubChat(messages);
     }
-    return output;
+    consecutiveFailures = 0;
+    return result;
   } catch (e: any) {
-    if (e instanceof TimeoutError) {
-      console.warn(`[gemma-engine] GEMMA TIMEOUT after ${GEMMA_GENERATE_TIMEOUT_MS}ms`);
-    } else {
-      console.warn("[gemma-engine] GEMMA FAILED:", e?.message);
+    console.warn("[gemma-engine] GEMMA FAILED:", e?.message);
+    consecutiveFailures++;
+    lastFailureAt = Date.now();
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      const elapsed = Date.now() - lastFailureAt;
+      if (elapsed < FAILURE_RESET_MS) {
+        console.warn("[gemma-engine] Too many failures -- activating stub");
+        activateStub("Too many inference failures. Using stub fallback.");
+      }
     }
-    throw e;
-  } finally {
-    inFlightGenerate = null;
+    return stubChat(messages);
   }
 }
 

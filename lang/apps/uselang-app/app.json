@@ -35,7 +35,14 @@
     },
     "plugins": [
       "expo-router",
-      "react-native-litert-lm",
+      [
+        "llama.rn",
+        {
+          "enableEntitlements": true,
+          "entitlementsProfile": "production",
+          "forceCxx20": true
+        }
+      ],
       [
         "react-native-maps",
         {
